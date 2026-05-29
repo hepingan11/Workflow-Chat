@@ -1,0 +1,466 @@
+:root {
+  --bg: #f3f0e8;
+  --ink: #20211f;
+  --muted: #666b61;
+  --line: #d8d0bf;
+  --panel: #fffaf0;
+  --accent: #1f6f5f;
+  --accent-2: #c64f2f;
+  --shadow: 0 18px 50px rgb(32 33 31 / 12%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background:
+    linear-gradient(90deg, rgb(31 111 95 / 8%) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(31 111 95 / 8%) 1px, transparent 1px),
+    var(--bg);
+  background-size: 28px 28px;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.shell {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 56px 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.masthead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 32px;
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  max-width: 760px;
+  margin: 0;
+  font-size: clamp(42px, 7vw, 88px);
+  line-height: 0.96;
+  letter-spacing: 0;
+}
+
+.lede {
+  max-width: 680px;
+  margin: 22px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.statusPanel {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0 16px;
+  box-shadow: var(--shadow);
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+}
+
+.statusPanel svg {
+  width: 19px;
+  color: var(--accent);
+}
+
+.employeeGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 34px;
+}
+
+.quickActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+.serviceConfigButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--panel);
+  padding: 0 14px;
+  box-shadow: var(--shadow);
+  font-family: "Courier New", monospace;
+  font-size: 14px;
+}
+
+.serviceConfigButton svg {
+  width: 17px;
+  height: 17px;
+}
+
+.employeeHero {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 32px;
+}
+
+.employeeHeroGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: end;
+  margin-top: 24px;
+}
+
+.backLink {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.backLink svg {
+  width: 17px;
+  height: 17px;
+}
+
+.operatorConsole {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+  gap: 18px;
+  margin-top: 34px;
+}
+
+.editorPanel,
+.publishPanel,
+.resultPanel,
+.settingsPanel,
+.roleConfigCard {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.panelHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.panelHeader svg {
+  width: 23px;
+  height: 23px;
+  color: var(--accent);
+}
+
+.panelHeader h2,
+.resultPanel h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--panel);
+  padding: 0 12px;
+  cursor: pointer;
+  font-family: "Courier New", monospace;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+button svg {
+  width: 16px;
+  height: 16px;
+}
+
+label {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  color: var(--ink);
+  padding: 12px;
+  font: inherit;
+  line-height: 1.5;
+}
+
+textarea {
+  min-height: 176px;
+  resize: vertical;
+}
+
+.editorPanel textarea {
+  min-height: 364px;
+}
+
+.resultPanel {
+  margin-top: 18px;
+}
+
+.settingsPanel {
+  margin-top: 24px;
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.advancedToggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  width: 100%;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.advancedToggle svg:last-child {
+  transition: transform 160ms ease;
+}
+
+.advancedToggle[aria-expanded="true"] svg:last-child {
+  transform: rotate(180deg);
+}
+
+.roleConfigGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.roleConfigCard {
+  box-shadow: none;
+}
+
+.roleConfigCard h2 {
+  margin: 24px 0 8px;
+  font-size: 24px;
+}
+
+.toggleLabel {
+  display: inline-flex;
+  grid-template-columns: none;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  color: var(--ink);
+}
+
+.toggleLabel input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+}
+
+.resultPanel pre {
+  min-height: 140px;
+  max-height: 360px;
+  margin: 16px 0 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: #171915;
+  color: #dce8cf;
+  padding: 16px;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.employeeCard {
+  display: block;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    border-color 160ms ease;
+}
+
+.employeeCard:hover {
+  border-color: var(--accent);
+  box-shadow: 0 22px 60px rgb(31 111 95 / 16%);
+  transform: translateY(-4px);
+}
+
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.cardTop svg {
+  width: 28px;
+  height: 28px;
+  color: var(--accent);
+}
+
+.cardTop span {
+  border: 1px solid var(--line);
+  padding: 5px 8px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
+.cardTop span[data-status="reserved"] {
+  color: var(--accent-2);
+}
+
+.employeeCard h2 {
+  margin: 30px 0 10px;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.employeeCard p {
+  min-height: 54px;
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.employeeCard code {
+  font-family: "Courier New", monospace;
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.cardAction {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.cardAction svg {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.emptyWorkbench {
+  margin-top: 34px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 28px;
+}
+
+.emptyWorkbench > svg {
+  width: 34px;
+  height: 34px;
+  color: var(--accent);
+}
+
+.emptyWorkbench h2 {
+  margin: 24px 0 10px;
+  font-size: 30px;
+}
+
+.emptyWorkbench p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.emptyFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.emptyFacts span {
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  padding: 8px 10px;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+@media (max-width: 1080px) {
+  .employeeGrid,
+  .operatorConsole,
+  .settingsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .masthead,
+  .employeeHeroGrid,
+  .employeeGrid,
+  .operatorConsole,
+  .settingsGrid,
+  .roleConfigGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statusPanel {
+    justify-self: start;
+  }
+
+  .quickActions {
+    justify-content: flex-start;
+  }
+}

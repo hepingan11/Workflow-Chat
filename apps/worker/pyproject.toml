@@ -1,0 +1,12 @@
+[project]
+name = "workflow-chat-worker"
+version = "0.1.0"
+description = "Worker scaffold for Workflow Chat Digital Employee OS."
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
