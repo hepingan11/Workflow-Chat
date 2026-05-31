@@ -6,8 +6,37 @@ import { useEffect, useState } from "react";
 
 import { employees } from "../../employees";
 
+type AiServiceFormat = "openai" | "anthropic" | "full_url";
+
+const formatOptions: Array<{ value: AiServiceFormat; label: string }> = [
+  { value: "openai", label: "OpenAI" },
+  { value: "anthropic", label: "Anthropic" },
+  { value: "full_url", label: "完整 URL" },
+];
+
+function getBaseUrlPlaceholder(format: AiServiceFormat) {
+  if (format === "anthropic") {
+    return "https://api.anthropic.com";
+  }
+  if (format === "full_url") {
+    return "输入完整请求 URL";
+  }
+  return "https://api.openai.com/v1";
+}
+
+function getBaseUrlHint(format: AiServiceFormat) {
+  if (format === "anthropic") {
+    return "使用 Anthropic 兼容地址，通常填写 API 根地址。";
+  }
+  if (format === "full_url") {
+    return "直接填写完整请求地址，不再依赖默认路径拼接。";
+  }
+  return "使用 OpenAI 兼容地址，通常填写 API 根地址。";
+}
+
 type RoleModelConfig = {
   enabled: boolean;
+  format: AiServiceFormat;
   base_url: string;
   api_key: string;
   model_name: string;
@@ -15,6 +44,7 @@ type RoleModelConfig = {
 
 type ModelSettingsForm = {
   global_model: {
+    format: AiServiceFormat;
     base_url: string;
     api_key: string;
     model_name: string;
@@ -24,6 +54,7 @@ type ModelSettingsForm = {
 
 const emptyRoleConfig: RoleModelConfig = {
   enabled: false,
+  format: "openai",
   base_url: "",
   api_key: "",
   model_name: "",
@@ -32,6 +63,7 @@ const emptyRoleConfig: RoleModelConfig = {
 function createEmptyForm(): ModelSettingsForm {
   return {
     global_model: {
+      format: "openai",
       base_url: "",
       api_key: "",
       model_name: "",
@@ -52,6 +84,7 @@ export default function ServicesSettingsPage() {
       .then((data) => {
         setForm({
           global_model: {
+            format: data.global_model?.format ?? "openai",
             base_url: data.global_model?.base_url ?? "",
             api_key: "",
             model_name: data.global_model?.model_name ?? "",
@@ -63,6 +96,7 @@ export default function ServicesSettingsPage() {
                 employee.key,
                 {
                   enabled: roleConfig.enabled ?? false,
+                  format: roleConfig.format ?? "openai",
                   base_url: roleConfig.base_url ?? "",
                   api_key: "",
                   model_name: roleConfig.model_name ?? "",
@@ -171,8 +205,22 @@ export default function ServicesSettingsPage() {
             <input
               value={form.global_model.base_url}
               onChange={(event) => updateGlobal("base_url", event.target.value)}
-              placeholder="https://api.openai.com/v1"
+              placeholder={getBaseUrlPlaceholder(form.global_model.format)}
             />
+            <small>{getBaseUrlHint(form.global_model.format)}</small>
+          </label>
+          <label>
+            接口格式
+            <select
+              value={form.global_model.format}
+              onChange={(event) => updateGlobal("format", event.target.value as AiServiceFormat)}
+            >
+              {formatOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             API Key
@@ -226,12 +274,26 @@ export default function ServicesSettingsPage() {
                   </div>
                   <h2>{employee.name}</h2>
                   <label>
+                    接口格式
+                    <select
+                      value={roleConfig.format}
+                      onChange={(event) => updateRole(employee.key, { format: event.target.value as AiServiceFormat })}
+                    >
+                      {formatOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
                     Base URL
                     <input
                       value={roleConfig.base_url}
                       onChange={(event) => updateRole(employee.key, { base_url: event.target.value })}
-                      placeholder="留空则使用全局配置"
+                      placeholder={getBaseUrlPlaceholder(roleConfig.format)}
                     />
+                    <small>{getBaseUrlHint(roleConfig.format)} 留空则使用全局配置。</small>
                   </label>
                   <label>
                     API Key

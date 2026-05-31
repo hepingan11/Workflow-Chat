@@ -1,7 +1,14 @@
 from pydantic import BaseModel, Field
 
 
+class AiServiceFormat:
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    FULL_URL = "full_url"
+
+
 class AiModelConfig(BaseModel):
+    format: str = AiServiceFormat.OPENAI
     base_url: str = ""
     api_key: str = ""
     model_name: str = ""
@@ -9,6 +16,7 @@ class AiModelConfig(BaseModel):
 
 class RoleModelConfig(BaseModel):
     enabled: bool = False
+    format: str = AiServiceFormat.OPENAI
     base_url: str = ""
     api_key: str = ""
     model_name: str = ""
@@ -21,6 +29,7 @@ class ModelSettings(BaseModel):
 
 
 class PublicAiModelConfig(BaseModel):
+    format: str = AiServiceFormat.OPENAI
     base_url: str = ""
     has_api_key: bool = False
     model_name: str = ""
@@ -28,6 +37,7 @@ class PublicAiModelConfig(BaseModel):
 
 class PublicRoleModelConfig(BaseModel):
     enabled: bool = False
+    format: str = AiServiceFormat.OPENAI
     base_url: str = ""
     has_api_key: bool = False
     model_name: str = ""

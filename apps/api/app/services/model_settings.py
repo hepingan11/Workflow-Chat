@@ -4,6 +4,7 @@ from pathlib import Path
 
 from app.schemas.settings import (
     AiModelConfig,
+    AiServiceFormat,
     ModelSettings,
     PublicAiModelConfig,
     PublicModelSettings,
@@ -69,6 +70,7 @@ def update_model_settings(payload: ModelSettings) -> PublicModelSettings:
 def to_public_model_settings(settings: ModelSettings) -> PublicModelSettings:
     return PublicModelSettings(
         global_model=PublicAiModelConfig(
+            format=settings.global_model.format,
             base_url=settings.global_model.base_url,
             has_api_key=bool(settings.global_model.api_key),
             model_name=settings.global_model.model_name,
@@ -76,6 +78,7 @@ def to_public_model_settings(settings: ModelSettings) -> PublicModelSettings:
         role_models={
             key: PublicRoleModelConfig(
                 enabled=config.enabled,
+                format=config.format,
                 base_url=config.base_url,
                 has_api_key=bool(config.api_key),
                 model_name=config.model_name,
@@ -89,6 +92,7 @@ def to_public_model_settings(settings: ModelSettings) -> PublicModelSettings:
 def _default_model_settings() -> ModelSettings:
     return ModelSettings(
         global_model=AiModelConfig(
+            format=AiServiceFormat.OPENAI,
             base_url="",
             api_key="",
             model_name="",
