@@ -31,6 +31,8 @@ htmlcov/
 # Node / Next.js
 node_modules/
 .next/
+.next-dev/
+.next-build/
 out/
 .turbo/
 .vercel/

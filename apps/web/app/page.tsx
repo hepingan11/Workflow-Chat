@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, FileText, Save, Settings, ShieldCheck, Wrench } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, FileText, GitBranch, MessageSquare, Save, Settings, ShieldCheck, Wrench } from "lucide-react";
 
 import { employees } from "./employees";
 
@@ -10,9 +10,12 @@ type ParsedPlaybook = {
   role_key: string;
   name: string;
   trigger: {
-    type: "daily";
+    type: "immediate" | "scheduled" | "daily" | "recurring";
     time: string;
     timezone: string;
+    cron?: string | null;
+    run_at?: string | null;
+    description?: string | null;
   };
   collaboration: {
     mode: "single_role" | "multi_role";
@@ -24,7 +27,7 @@ type ParsedPlaybook = {
   steps: Array<{
     id: string;
     name: string;
-    type: "tool" | "human_approval" | "handoff" | "noop";
+    type: "tool" | "human_approval" | "message_push" | "handoff" | "noop";
     role_key?: string | null;
     assignee_role_key?: string | null;
     participant_role_keys?: string[];
@@ -66,13 +69,16 @@ const exampleCommands = [
 
 function detectMentionQuery(value: string, caretIndex: number) {
   const textBeforeCaret = value.slice(0, caretIndex);
-  const match = textBeforeCaret.match(/(?:^|\s)@([^\s@]*)$/);
-  if (!match || match.index === undefined) {
+  const mentionStart = textBeforeCaret.lastIndexOf("@");
+  if (mentionStart < 0) {
     return null;
   }
 
-  const query = match[1] ?? "";
-  const mentionStart = match.index + match[0].lastIndexOf("@");
+  const query = textBeforeCaret.slice(mentionStart + 1);
+  if (query.includes(" ") || query.includes("@")) {
+    return null;
+  }
+
   return { query, mentionStart, mentionEnd: caretIndex };
 }
 
@@ -95,6 +101,152 @@ function detectToolQuery(value: string, caretIndex: number) {
     return null;
   }
   return { query: tail, toolStart: hashIndex, toolEnd: caretIndex, explicit: false };
+}
+
+function getRoleName(roleKey?: string | null) {
+  if (!roleKey) {
+    return "未指定";
+  }
+  return employees.find((employee) => employee.key === roleKey)?.name ?? roleKey;
+}
+
+function getStepToolName(step: ParsedPlaybook["steps"][number]) {
+  return typeof step.config.tool_name === "string" && step.config.tool_name ? step.config.tool_name : "无工具";
+}
+
+function getStepRunTime(step: ParsedPlaybook["steps"][number], playbook: ParsedPlaybook) {
+  if (typeof step.config.run_at === "string" && step.config.run_at) {
+    return `${step.config.run_at} 执行`;
+  }
+  if (step.type === "tool" && !step.depends_on_step_ids?.length) {
+    return formatTriggerSummary(playbook);
+  }
+  if (step.depends_on_step_ids?.length) {
+    return "上一步完成后执行";
+  }
+  return formatTriggerSummary(playbook);
+}
+
+function formatTriggerSummary(playbook: ParsedPlaybook) {
+  if (playbook.trigger.run_at) {
+    return `${playbook.trigger.run_at} 执行`;
+  }
+  if (playbook.trigger.cron) {
+    return `${playbook.trigger.time} 执行 · cron: ${playbook.trigger.cron}`;
+  }
+  return `${playbook.trigger.time} 触发`;
+}
+
+function getStepPrompt(step: ParsedPlaybook["steps"][number]) {
+  if (typeof step.config.message_template === "string" && step.config.message_template) {
+    return step.config.message_template;
+  }
+  const inputTemplate = step.config.input_template;
+  if (inputTemplate && typeof inputTemplate === "object" && Object.keys(inputTemplate).length) {
+    return JSON.stringify(inputTemplate, null, 2);
+  }
+  if (step.type === "tool") {
+    return step.config.needs_previous_output ? "使用上一步输出作为本次工具输入。" : "使用当前任务上下文作为工具输入。";
+  }
+  if (step.type === "handoff") {
+    return typeof step.config.message_template === "string" ? step.config.message_template : "把当前上下文交接给下一个角色。";
+  }
+  if (step.type === "message_push") {
+    return "读取上一步输出，并推送到已配置的通知渠道。";
+  }
+  return "无额外提示词。";
+}
+
+function getStepNextAction(step: ParsedPlaybook["steps"][number], playbook: ParsedPlaybook) {
+  if (step.type === "human_approval") {
+    const approved = step.on_approved_step_ids?.[0];
+    const rejected = step.on_rejected_step_ids?.[0];
+    return {
+      label: "发送给我确认",
+      detail: approved
+        ? `确认没问题后进入 ${getStepName(playbook, approved)}${rejected ? `；拒绝后进入 ${getStepName(playbook, rejected)}` : "；拒绝后停止"}`
+        : "确认节点用于人工检查；当前没有后续节点，确认后流程完成。",
+    };
+  }
+  if (step.type === "handoff") {
+    return {
+      label: `交给 ${getRoleName(step.handoff_to_role_key)}`,
+      detail: step.next_step_ids?.length ? `随后进入 ${step.next_step_ids.map((id) => getStepName(playbook, id)).join("、")}` : "交接后流程完成。",
+    };
+  }
+  if (step.type === "message_push") {
+    return {
+      label: "推送给我",
+      detail: step.next_step_ids?.length ? `推送完成后进入 ${step.next_step_ids.map((id) => getStepName(playbook, id)).join("、")}` : "推送完成后流程结束。",
+    };
+  }
+  if (step.next_step_ids?.length) {
+    return {
+      label: "发送给下一个节点",
+      detail: step.next_step_ids.map((id) => getStepName(playbook, id)).join("、"),
+    };
+  }
+  return {
+    label: "直接完成",
+    detail: "该节点结束后没有后续动作。",
+  };
+}
+
+function getStepName(playbook: ParsedPlaybook, stepId: string) {
+  return playbook.steps.find((step) => step.id === stepId)?.name ?? stepId;
+}
+
+function getStepKindLabel(step: ParsedPlaybook["steps"][number]) {
+  if (step.type === "tool") {
+    return "工具执行";
+  }
+  if (step.type === "human_approval") {
+    return "人工确认";
+  }
+  if (step.type === "message_push") {
+    return "消息推送";
+  }
+  if (step.type === "handoff") {
+    return "角色交接";
+  }
+  return "完成节点";
+}
+
+function getStepKindClass(step: ParsedPlaybook["steps"][number]) {
+  return `is-${step.type.replace("_", "-")}`;
+}
+
+function getStepConnections(step: ParsedPlaybook["steps"][number], playbook: ParsedPlaybook) {
+  const connections: Array<{ id: string; label: string; targetName: string; tone: "default" | "approved" | "rejected" }> = [];
+
+  step.next_step_ids?.forEach((targetId) => {
+    connections.push({
+      id: `${step.id}-next-${targetId}`,
+      label: step.type === "handoff" ? "交接后" : "下一步",
+      targetName: getStepName(playbook, targetId),
+      tone: "default",
+    });
+  });
+
+  step.on_approved_step_ids?.forEach((targetId) => {
+    connections.push({
+      id: `${step.id}-approved-${targetId}`,
+      label: "确认通过",
+      targetName: getStepName(playbook, targetId),
+      tone: "approved",
+    });
+  });
+
+  step.on_rejected_step_ids?.forEach((targetId) => {
+    connections.push({
+      id: `${step.id}-rejected-${targetId}`,
+      label: "确认拒绝",
+      targetName: getStepName(playbook, targetId),
+      tone: "rejected",
+    });
+  });
+
+  return connections;
 }
 
 export default function Home() {
@@ -310,7 +462,6 @@ export default function Home() {
       <section className="homeComposerShell">
         <div className="homeComposerHeader">
           <p className="eyebrow">Natural Language Orchestration</p>
-          <h2>一句话安排数字员工协作</h2>
           <p className="homeComposerHint">
             输入 `@` 选择员工，输入 `#` 或 `#{}` 选择工具。支持上下键与回车快速选择。
           </p>
@@ -415,9 +566,132 @@ export default function Home() {
         </section>
 
         {showPreview && parsedPlaybook ? (
-          <div className="resultPanel homePreviewPanel">
-            <h2>解析预览</h2>
-            <pre>{JSON.stringify(parsedPlaybook, null, 2)}</pre>
+          <div className="flowPreviewPanel homePreviewPanel">
+            <div className="flowPreviewHeader">
+              <div>
+                <p className="eyebrow">Parsed Playbook</p>
+                <h2>{parsedPlaybook.name}</h2>
+              </div>
+              <div className="flowMeta">
+                <span>{getRoleName(parsedPlaybook.role_key)}</span>
+                <span>{parsedPlaybook.trigger.type}</span>
+                <span>{parsedPlaybook.trigger.cron || parsedPlaybook.trigger.time}</span>
+                <span>{parsedPlaybook.steps.length} 个节点</span>
+              </div>
+            </div>
+
+            <div className="flowTriggerSummary">
+              <Clock3 aria-hidden="true" />
+              <div>
+                <strong>触发时间</strong>
+                <p>
+                  {parsedPlaybook.trigger.description || formatTriggerSummary(parsedPlaybook)}
+                  {parsedPlaybook.trigger.run_at ? `；run_at: ${parsedPlaybook.trigger.run_at}` : ""}
+                  {parsedPlaybook.trigger.cron ? `；cron: ${parsedPlaybook.trigger.cron}` : ""}
+                </p>
+              </div>
+            </div>
+
+            <div className="workflowCanvas" aria-label="解析后的流程节点画布">
+              <div className="workflowCanvasHeader">
+                <div>
+                  <p className="eyebrow">Workflow Canvas</p>
+                  <strong>节点会按执行顺序展开，右侧端口代表输出，连线标签代表进入下一节点的条件。</strong>
+                </div>
+                <div className="workflowLegend" aria-label="节点图例">
+                  <span data-tone="tool">工具</span>
+                  <span data-tone="approval">确认</span>
+                  <span data-tone="handoff">交接</span>
+                </div>
+              </div>
+
+              <div className="workflowGraph">
+              {parsedPlaybook.steps.map((step, index) => {
+                const nextAction = getStepNextAction(step, parsedPlaybook);
+                const connections = getStepConnections(step, parsedPlaybook);
+                return (
+                  <article className={`flowNode ${getStepKindClass(step)}`} key={step.id}>
+                    <div className="flowNodeIndex">
+                      <span>{index + 1}</span>
+                    </div>
+                    <div className="flowNodeBody">
+                      <i className="nodePort nodePortIn" aria-hidden="true" />
+                      <i className="nodePort nodePortOut" aria-hidden="true" />
+                      <div className="flowNodeTop">
+                        <div>
+                          <span className="flowNodeKind">{getStepKindLabel(step)}</span>
+                          <h3>{step.name}</h3>
+                        </div>
+                        <span className="flowNodeId">{step.id}</span>
+                      </div>
+
+                      <div className="flowFacts">
+                        <span>
+                          <ShieldCheck aria-hidden="true" />
+                          角色：{getRoleName(step.assignee_role_key || step.role_key || parsedPlaybook.role_key)}
+                        </span>
+                        <span>
+                          <Wrench aria-hidden="true" />
+                          工具：{step.type === "tool" ? getStepToolName(step) : "不使用工具"}
+                        </span>
+                        <span>
+                          <Clock3 aria-hidden="true" />
+                          时间：{getStepRunTime(step, parsedPlaybook)}
+                        </span>
+                      </div>
+
+                      <div className="flowPrompt">
+                        <strong>{step.type === "human_approval" ? "确认消息" : step.type === "message_push" ? "推送内容来源" : "执行提示词/输入"}</strong>
+                        <p>{getStepPrompt(step)}</p>
+                      </div>
+
+                      <div className="flowNextAction">
+                        {step.type === "human_approval" ? <MessageSquare aria-hidden="true" /> : <CheckCircle2 aria-hidden="true" />}
+                        <div>
+                          <strong>{nextAction.label}</strong>
+                          <p>{nextAction.detail}</p>
+                        </div>
+                      </div>
+
+                      <div className="flowConnections" aria-label={`${step.name} 的后续连线`}>
+                        {connections.length ? (
+                          connections.map((connection) => (
+                            <div className="flowConnection" data-tone={connection.tone} key={connection.id}>
+                              <GitBranch aria-hidden="true" />
+                              <span>{connection.label}</span>
+                              <ArrowRight aria-hidden="true" />
+                              <strong>{connection.targetName}</strong>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flowConnection is-terminal">
+                            <CheckCircle2 aria-hidden="true" />
+                            <span>流程结束</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+              </div>
+            </div>
+
+            {parsedPlaybook.unresolved_tools.length ? (
+              <div className="flowWarning">
+                未解析工具：{parsedPlaybook.unresolved_tools.join("、")}。保存剧本前需要先在工具管理中注册并授权。
+              </div>
+            ) : null}
+
+            <div className="flowPreviewActions">
+              <button type="button" onClick={savePlaybook} disabled={isBusy || Boolean(parsedPlaybook.unresolved_tools.length)}>
+                <Save aria-hidden="true" />
+                保存任务
+              </button>
+              <span>
+                保存后可在对应员工管理页查看任务、运行实例和执行节点日志。
+              </span>
+            </div>
           </div>
         ) : null}
       </section>

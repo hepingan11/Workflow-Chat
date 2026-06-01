@@ -260,6 +260,95 @@ textarea {
   gap: 16px;
 }
 
+.settingsIntro {
+  max-width: 820px;
+  margin: 0 0 18px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.notificationChannelGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.notificationChannelCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  margin: 0;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  padding: 14px;
+  color: var(--ink);
+}
+
+.notificationChannelCard:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: 0 14px 34px rgb(31 111 95 / 12%);
+}
+
+.notificationChannelCard input {
+  width: 17px;
+  height: 17px;
+  margin-top: 3px;
+}
+
+.notificationChannelCard strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 18px;
+}
+
+.notificationSettingsGrid {
+  margin-top: 18px;
+}
+
+.bossSettingsGrid .wideField {
+  grid-column: span 2;
+}
+
+.bossSettingsGrid textarea {
+  min-height: 132px;
+}
+
+.emptyInlineNotice {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 18px;
+  border: 1px dashed var(--line);
+  background: #fffdf8;
+  padding: 14px;
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+}
+
+.emptyInlineNotice svg {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.settingsHintCard {
+  align-self: end;
+  border: 1px dashed var(--line);
+  background: rgb(243 240 232 / 58%);
+  padding: 14px;
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.settingsHintCard code {
+  display: inline-block;
+  margin: 0 4px;
+  color: var(--accent);
+}
+
 .homeComposerPanel {
   margin-top: 28px;
 }
@@ -362,6 +451,407 @@ textarea {
 
 .homePreviewPanel {
   margin-top: 20px;
+}
+
+.flowPreviewPanel {
+  margin-top: 20px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+
+.flowPreviewHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
+}
+
+.flowPreviewHeader h2 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.flowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.flowMeta span,
+.flowNodeKind,
+.flowNodeId {
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  padding: 7px 9px;
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
+.flowTriggerSummary {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  padding: 12px 14px;
+}
+
+.flowTriggerSummary svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+}
+
+.flowTriggerSummary strong {
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+}
+
+.flowTriggerSummary p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.workflowCanvas {
+  position: relative;
+  margin-top: 20px;
+  overflow: hidden;
+  border: 1px solid rgb(32 33 31 / 16%);
+  background:
+    linear-gradient(90deg, rgb(31 111 95 / 8%) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(31 111 95 / 7%) 1px, transparent 1px),
+    radial-gradient(circle at 10% 20%, rgb(198 79 47 / 10%), transparent 26%),
+    #fffdf8;
+  background-size: 26px 26px, 26px 26px, auto, auto;
+  padding: 18px;
+}
+
+.workflowCanvas::before {
+  position: absolute;
+  inset: 92px 38px auto 38px;
+  height: 2px;
+  border-top: 2px dashed rgb(31 111 95 / 28%);
+  content: "";
+}
+
+.workflowCanvasHeader {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 22px;
+}
+
+.workflowCanvasHeader strong {
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.workflowLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.workflowLegend span {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 7px 9px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
+.workflowLegend span::before {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  content: "";
+}
+
+.workflowLegend span[data-tone="approval"]::before {
+  background: var(--accent-2);
+}
+
+.workflowLegend span[data-tone="handoff"]::before {
+  background: #7b6a2f;
+}
+
+.workflowGraph {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 46px;
+  overflow-x: auto;
+  padding: 12px 8px 10px;
+  scroll-snap-type: x proximity;
+}
+
+.flowNode {
+  position: relative;
+  display: grid;
+  grid-template-columns: 42px minmax(320px, 380px);
+  flex: 0 0 auto;
+  gap: 12px;
+  scroll-snap-align: start;
+}
+
+.flowNode:not(:last-child)::after {
+  position: absolute;
+  top: 24px;
+  left: calc(100% + 4px);
+  width: 38px;
+  height: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgb(31 111 95 / 8%);
+  content: "";
+}
+
+.flowNode:not(:last-child)::before {
+  position: absolute;
+  top: 19px;
+  left: calc(100% + 34px);
+  width: 0;
+  height: 0;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+  border-left: 8px solid var(--accent);
+  content: "";
+  z-index: 2;
+}
+
+.flowNodeIndex {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: start center;
+  width: 42px;
+  padding-top: 2px;
+}
+
+.flowNodeIndex span {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--accent);
+  background: var(--panel);
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgb(31 111 95 / 12%);
+}
+
+.flowNodeBody {
+  position: relative;
+  border: 1px solid rgb(32 33 31 / 18%);
+  background:
+    linear-gradient(180deg, rgb(255 250 240 / 98%), rgb(255 253 248 / 96%)),
+    #fffdf8;
+  box-shadow: 0 16px 38px rgb(32 33 31 / 12%);
+  padding: 18px;
+}
+
+.flowNodeBody::before {
+  position: absolute;
+  inset: 0;
+  width: 5px;
+  background: var(--accent);
+  content: "";
+}
+
+.flowNode.is-human-approval .flowNodeBody::before {
+  background: var(--accent-2);
+}
+
+.flowNode.is-message-push .flowNodeBody::before {
+  background: #2f6f9f;
+}
+
+.flowNode.is-handoff .flowNodeBody::before {
+  background: #7b6a2f;
+}
+
+.nodePort {
+  position: absolute;
+  top: 23px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  background: #fffdf8;
+  box-shadow: 0 0 0 4px rgb(31 111 95 / 10%);
+}
+
+.nodePortIn {
+  left: -7px;
+}
+
+.nodePortOut {
+  right: -7px;
+}
+
+.flowNodeTop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.flowNodeTop h3 {
+  margin: 10px 0 0;
+  font-size: 24px;
+}
+
+.flowFacts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.flowFacts span {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  background: rgb(243 240 232 / 58%);
+  padding: 10px;
+  color: var(--ink);
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.flowFacts svg,
+.flowNextAction svg {
+  flex: 0 0 auto;
+  width: 17px;
+  height: 17px;
+  color: var(--accent);
+}
+
+.flowPrompt {
+  margin-top: 14px;
+  border-left: 3px solid var(--accent);
+  background: rgb(243 240 232 / 58%);
+  padding: 12px 14px;
+}
+
+.flowPrompt strong,
+.flowNextAction strong {
+  font-family: "Courier New", monospace;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.flowPrompt p,
+.flowNextAction p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.flowNextAction {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  padding: 12px 14px;
+}
+
+.flowConnections {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.flowConnection {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border: 1px dashed rgb(31 111 95 / 38%);
+  background: rgb(31 111 95 / 7%);
+  padding: 9px 10px;
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
+.flowConnection[data-tone="approved"] {
+  border-color: rgb(31 111 95 / 48%);
+  background: rgb(31 111 95 / 9%);
+}
+
+.flowConnection[data-tone="rejected"] {
+  border-color: rgb(198 79 47 / 46%);
+  background: rgb(198 79 47 / 8%);
+  color: var(--accent-2);
+}
+
+.flowConnection.is-terminal {
+  border-color: rgb(32 33 31 / 18%);
+  background: rgb(243 240 232 / 72%);
+  color: var(--muted);
+}
+
+.flowConnection svg {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+}
+
+.flowConnection strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowWarning {
+  margin-top: 18px;
+  border: 1px solid var(--accent-2);
+  background: rgb(198 79 47 / 8%);
+  color: var(--accent-2);
+  padding: 12px 14px;
+  font-family: "Courier New", monospace;
+  line-height: 1.5;
+}
+
+.flowPreviewActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.flowPreviewActions span {
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
 }
 
 .mentionComposer {
@@ -534,6 +1024,7 @@ small {
 }
 
 .automationCard {
+  min-width: 0;
   border: 1px solid var(--line);
   background: #fffdf8;
   padding: 16px;
@@ -542,6 +1033,18 @@ small {
 .automationCard h3 {
   margin: 0 0 10px;
   font-size: 20px;
+}
+
+.automationCardHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.automationCardHeader h3 {
+  margin: 0;
 }
 
 .automationCard p {
@@ -558,7 +1061,116 @@ small {
 }
 
 .automationCard pre {
+  max-width: 100%;
   margin-top: 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.taskMetaGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.taskMetaGrid span {
+  border: 1px solid var(--line);
+  background: rgb(243 240 232 / 58%);
+  padding: 8px;
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.stepPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.stepPills span {
+  border: 1px solid rgb(31 111 95 / 28%);
+  background: rgb(31 111 95 / 7%);
+  color: var(--accent);
+  padding: 6px 8px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
+.nodeLogCard {
+  position: relative;
+  overflow: hidden;
+}
+
+.nodeLogHeader {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  cursor: pointer;
+  list-style: none;
+}
+
+.nodeLogHeader::-webkit-details-marker {
+  display: none;
+}
+
+.nodeLogHeader::after {
+  align-self: center;
+  justify-self: end;
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  content: "展开日志";
+}
+
+.nodeLogCard[open] .nodeLogHeader::after {
+  content: "收起日志";
+}
+
+.nodeLogHeader > span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+}
+
+.nodeLogHeader h3 {
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.nodeLogBody {
+  min-width: 0;
+  margin-top: 14px;
+}
+
+.nodeLogPre {
+  max-height: 360px;
+  border: 1px solid var(--line);
+  background: #171915;
+  color: #dce8cf;
+  padding: 14px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.nodeError {
+  border: 1px solid var(--accent-2);
+  background: rgb(198 79 47 / 8%);
+  color: var(--accent-2) !important;
+  padding: 10px;
+  font-family: "Courier New", monospace;
 }
 
 .advancedToggle {
@@ -746,6 +1358,7 @@ small {
   .employeeGrid,
   .operatorConsole,
   .settingsGrid,
+  .notificationChannelGrid,
   .toolWorkbench {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -754,10 +1367,14 @@ small {
 @media (max-width: 720px) {
   .masthead,
   .commandCanvasTop,
+  .flowPreviewHeader,
+  .workflowCanvasHeader,
   .employeeHeroGrid,
   .employeeGrid,
   .operatorConsole,
   .settingsGrid,
+  .notificationChannelGrid,
+  .taskMetaGrid,
   .roleConfigGrid,
   .toolWorkbench {
     grid-template-columns: 1fr;
@@ -769,5 +1386,29 @@ small {
 
   .quickActions {
     justify-content: flex-start;
+  }
+
+  .flowMeta {
+    justify-content: flex-start;
+  }
+
+  .workflowCanvas::before,
+  .flowNode::before,
+  .flowNode::after {
+    display: none;
+  }
+
+  .workflowGraph {
+    display: grid;
+    overflow: visible;
+  }
+
+  .flowNode {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .flowNodeTop,
+  .flowFacts {
+    grid-template-columns: 1fr;
   }
 }

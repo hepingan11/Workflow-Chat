@@ -12,6 +12,7 @@ from app.schemas.playbooks import (
 from app.services.playbooks import (
     advance_run,
     create_playbook,
+    delete_playbook,
     list_approvals,
     list_playbooks,
     list_runs,
@@ -19,6 +20,7 @@ from app.services.playbooks import (
     resolve_approval,
     trigger_playbook,
 )
+from app.services.playbook_scheduler import run_scheduler_tick
 
 router = APIRouter()
 
@@ -43,9 +45,19 @@ def read_runs(playbook_id: str | None = None) -> list[PublicPlaybookRun]:
     return list_runs(playbook_id)
 
 
+@router.post("/scheduler/tick")
+def run_scheduler_tick_request() -> dict[str, int]:
+    return run_scheduler_tick()
+
+
 @router.post("/{playbook_id}/trigger", response_model=PublicPlaybookRun)
 def trigger_playbook_request(playbook_id: str) -> PublicPlaybookRun:
     return trigger_playbook(playbook_id)
+
+
+@router.delete("/{playbook_id}", response_model=Playbook)
+def delete_playbook_request(playbook_id: str) -> Playbook:
+    return delete_playbook(playbook_id)
 
 
 @router.post("/runs/{run_id}/advance", response_model=PlaybookExecuteResponse)

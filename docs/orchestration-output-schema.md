@@ -40,9 +40,12 @@
 
 ```json
 {
-  "type": "daily",
+  "type": "scheduled",
   "time": "08:00",
-  "timezone": "Asia/Shanghai"
+  "timezone": "Asia/Shanghai",
+  "cron": "0 8 * * *",
+  "run_at": "2026-06-01T08:00:00+08:00",
+  "description": "每天 08:00 执行"
 }
 ```
 
@@ -52,6 +55,14 @@
 - `scheduled`
 - `daily`
 - `recurring`
+
+时间解析要求：
+
+- `cron` 使用 5 段格式：`minute hour day month weekday`
+- 绝对时间如 `每天早上8点` 输出 `cron = "0 8 * * *"`
+- 相对时间如 `5分钟后` 需要先获取当前时间，再推算 `run_at`
+- `待会儿`、`马上`、`等下`、`稍后` 如果没有明确时间，默认当前时间后 10 分钟
+- 无法通过规则解析时，可以调用 LLM 输出本结构，但仍必须返回结构化 JSON
 
 ### 2.4 `collaboration`
 
@@ -243,6 +254,27 @@
 3. Validator 校验
 4. Normalizer 修正默认值
 5. 保存为 playbook
+
+## 10.1 时间解析工程约定
+
+时间解析采用“规则优先，LLM 兜底”的方式：
+
+- 规则层优先处理高频、低歧义表达，例如 `5分钟后`、`待会儿`、`每天早上8点`、`明天上午10点`。
+- LLM 只在规则层无法解析时调用，避免每次解析都产生额外延迟和成本。
+- LLM 必须返回结构化 JSON，不能返回解释性文本。
+- LLM 输出必须通过 `ParsedTime` schema 和 cron 校验后才能进入 playbook。
+- LLM 调用失败、超时或输出不合法时，系统回退到默认触发时间。
+
+当前代码位置：
+
+- `apps/api/app/services/time_parser/rules.py`：规则解析。
+- `apps/api/app/services/time_parser/llm.py`：LLM 兜底解析。
+- `apps/api/app/services/time_parser/validators.py`：结构化输出校验。
+- `apps/api/app/services/time_parser/prompts/system.md`：系统提示词模板。
+- `apps/api/app/services/time_parser/prompts/user.md`：用户提示词模板。
+- `apps/api/app/services/time_parser/prompts/examples.json`：Few-shot 示例。
+
+后续新增时间表达时，优先判断是否能沉淀为规则；只有长尾、模糊、多语言或上下文相关表达才建议加入 Few-shot 或交给 LLM。
 
 ## 11. 输出约束建议
 

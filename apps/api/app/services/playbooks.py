@@ -25,7 +25,10 @@ from app.schemas.playbooks import (
 )
 from app.services.agent_registry import get_agent
 from app.services.agent_tools import execute_agent_tool
+from app.services.message_formatter import format_message_for_boss
+from app.services.notifications import send_approval_notification, send_message_push
 from app.services.prompt_config import get_config_dir
+from app.services.time_parser import parse_trigger_time
 from app.services.tool_registry import list_tools
 
 
@@ -71,15 +74,34 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
         raise HTTPException(status_code=404, detail="Agent not found")
 
     natural_language = payload.natural_language.strip()
-    trigger_time = _extract_trigger_time(natural_language)
+    trigger = parse_trigger_time(natural_language, payload.role_key)
+    trigger_time = trigger.time
     tool_names = _extract_tool_names(natural_language)
-    if len(tool_names) < 2:
-        raise HTTPException(status_code=400, detail="至少需要在描述中引用两个工具，例如 #{工具名}")
 
     tool_map, unresolved_tools = _resolve_tools(payload.role_key, tool_names)
     publish_time = _extract_publish_time(natural_language) or "14:00"
+    needs_approval = _requires_human_approval(natural_language)
+    needs_message_push = _requires_message_push(natural_language)
+    terminal_step_id = _terminal_message_step_id(needs_approval, needs_message_push)
 
     steps: list[PlaybookStep] = []
+    if not tool_names:
+        steps.append(
+            PlaybookStep(
+                id="step_request_approval" if needs_approval else "step_push_message",
+                name="请求人工审批" if needs_approval else "推送消息给我",
+                type="human_approval" if needs_approval else "message_push",
+                role_key=payload.role_key,
+                assignee_role_key=payload.role_key,
+                context_reads=[],
+                config={
+                    "channel": "message",
+                    "message_template": natural_language or ("请确认是否执行该任务。" if needs_approval else "任务消息推送"),
+                    "proceed_if": "approved",
+                },
+            )
+        )
+
     if tool_names:
         steps.append(
             PlaybookStep(
@@ -88,7 +110,7 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
                 type="tool",
                 role_key=payload.role_key,
                 assignee_role_key=payload.role_key,
-                next_step_ids=["step_generate_asset" if len(tool_names) >= 2 else "step_request_approval"],
+                next_step_ids=["step_generate_asset"] if len(tool_names) >= 2 else ([terminal_step_id] if terminal_step_id else []),
                 context_writes=["fetched_result"],
                 config={
                     "tool_id": tool_map.get(tool_names[0], {}).get("id", ""),
@@ -109,7 +131,7 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
                 role_key=payload.role_key,
                 assignee_role_key=payload.role_key,
                 depends_on_step_ids=["step_fetch_source"],
-                next_step_ids=["step_request_approval"],
+                next_step_ids=[terminal_step_id] if terminal_step_id else [],
                 context_reads=["fetched_result"],
                 context_writes=["generated_asset"],
                 config={
@@ -121,24 +143,43 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
             )
         )
 
-    steps.append(
-        PlaybookStep(
-            id="step_request_approval",
-            name="请求人工审批",
-            type="human_approval",
-            role_key=payload.role_key,
-            assignee_role_key=payload.role_key,
-            depends_on_step_ids=["step_generate_asset" if len(tool_names) >= 2 else "step_fetch_source"],
-            on_approved_step_ids=["step_publish"] if len(tool_names) >= 3 else [],
-            on_rejected_step_ids=[],
-            context_reads=["generated_asset" if len(tool_names) >= 2 else "fetched_result"],
-            config={
-                "channel": "message",
-                "message_template": "请确认今日运营内容是否可发布；若有问题则不发布。",
-                "proceed_if": "approved",
-            },
+    if tool_names and needs_approval:
+        steps.append(
+            PlaybookStep(
+                id="step_request_approval",
+                name="请求人工审批",
+                type="human_approval",
+                role_key=payload.role_key,
+                assignee_role_key=payload.role_key,
+                depends_on_step_ids=["step_generate_asset" if len(tool_names) >= 2 else "step_fetch_source"],
+                on_approved_step_ids=["step_publish"] if len(tool_names) >= 3 else [],
+                on_rejected_step_ids=[],
+                context_reads=["generated_asset" if len(tool_names) >= 2 else "fetched_result"],
+                config={
+                    "channel": "message",
+                    "message_template": "请确认今日运营内容是否可发布；若有问题则不发布。",
+                    "proceed_if": "approved",
+                },
+            )
         )
-    )
+
+    if tool_names and needs_message_push and not needs_approval:
+        steps.append(
+            PlaybookStep(
+                id="step_push_message",
+                name="推送结果给我",
+                type="message_push",
+                role_key=payload.role_key,
+                assignee_role_key=payload.role_key,
+                depends_on_step_ids=["step_generate_asset" if len(tool_names) >= 2 else "step_fetch_source"],
+                context_reads=["generated_asset" if len(tool_names) >= 2 else "fetched_result"],
+                config={
+                    "channel": "message",
+                    "message_template": "已完成任务，以下是执行结果。",
+                    "include_previous_output": True,
+                },
+            )
+        )
 
     if len(tool_names) >= 3:
         steps.append(
@@ -164,7 +205,7 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
     return PlaybookParseResponse(
         role_key=payload.role_key,
         name=payload.name or f"{agent.name}自动任务",
-        trigger=PlaybookTrigger(time=trigger_time),
+        trigger=trigger,
         collaboration=CollaborationPolicy(owner_role_key=payload.role_key),
         steps=steps,
         referenced_tools=tool_names,
@@ -215,7 +256,27 @@ def get_playbook(playbook_id: str) -> Playbook | None:
     return None
 
 
-def trigger_playbook(playbook_id: str) -> PublicPlaybookRun:
+def delete_playbook(playbook_id: str) -> Playbook:
+    registry = read_playbook_registry()
+    playbook = next((item for item in registry.playbooks if item.id == playbook_id), None)
+    if playbook is None:
+        raise HTTPException(status_code=404, detail="Playbook not found")
+
+    registry.playbooks = [item for item in registry.playbooks if item.id != playbook_id]
+    write_playbook_registry(registry)
+
+    run_registry = read_run_registry()
+    run_registry.runs = [item for item in run_registry.runs if item.playbook_id != playbook_id]
+    write_run_registry(run_registry)
+
+    approval_registry = read_approval_registry()
+    approval_registry.approvals = [item for item in approval_registry.approvals if item.playbook_id != playbook_id]
+    write_approval_registry(approval_registry)
+
+    return playbook
+
+
+def trigger_playbook(playbook_id: str, scheduled_for: str | None = None) -> PublicPlaybookRun:
     playbook = get_playbook(playbook_id)
     if playbook is None:
         raise HTTPException(status_code=404, detail="Playbook not found")
@@ -228,7 +289,7 @@ def trigger_playbook(playbook_id: str) -> PublicPlaybookRun:
         owner_role_key=playbook.collaboration.owner_role_key,
         participant_role_keys=playbook.collaboration.participant_role_keys,
         status="pending",
-        scheduled_for=_today_with_time(playbook.trigger.time),
+        scheduled_for=scheduled_for or playbook.trigger.run_at or _today_with_time(playbook.trigger.time),
         steps=[
             PlaybookRunStep(
                 id=step.id,
@@ -302,6 +363,53 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
             _advance_to_next(run, step, approved=True)
             continue
 
+        if step.type == "message_push":
+            step.status = "running"
+            raw_content = None
+            formatted_content = None
+            try:
+                raw_content = _build_message_push_content(run, step)
+                formatted_content = format_message_for_boss(
+                    step.assignee_role_key or run.role_key,
+                    step.config.get("message_template", "工作流消息"),
+                    raw_content,
+                )
+                if not formatted_content.ok:
+                    raise RuntimeError(formatted_content.error or "LLM 消息加工失败，消息未推送。")
+                message_result = send_message_push(
+                    title=step.config.get("message_template", "工作流消息"),
+                    content=formatted_content.content,
+                    context={
+                        "run_id": run.id,
+                        "step_name": step.name,
+                        "owner_role_key": run.owner_role_key,
+                        "participant_role_keys": run.participant_role_keys,
+                    },
+                )
+                step.status = "completed"
+                step.output = {
+                    "notification": message_result,
+                    "formatted_message": formatted_content.content,
+                    "formatting": {
+                        "model_name": formatted_content.model_name,
+                        "used_employee_prompt": formatted_content.used_employee_prompt,
+                        "used_boss_profile": formatted_content.used_boss_profile,
+                    },
+                }
+                _write_step_output_to_context(run, step)
+                _advance_to_next(run, step)
+                run.status = "running"
+            except Exception as exc:
+                step.status = "failed"
+                step.error = str(exc)
+                step.output = {
+                    "formatting": formatted_content.model_dump() if formatted_content else None,
+                    "raw_content_preview": str(raw_content)[:1000] if raw_content is not None else None,
+                }
+                run.status = "failed"
+                break
+            continue
+
         if step.type == "tool":
             scheduled_time = step.config.get("run_at")
             if scheduled_time and step.id != run.steps[0].id and not _time_ready(scheduled_time):
@@ -361,6 +469,11 @@ def resolve_approval(approval_id: str, approved: bool) -> ApprovalRequest:
     return approval
 
 
+def resolve_approval_and_advance(approval_id: str, approved: bool) -> PlaybookExecuteResponse:
+    approval = resolve_approval(approval_id, approved)
+    return advance_run(approval.run_id)
+
+
 def to_public_run(run: PlaybookRun) -> PublicPlaybookRun:
     return PublicPlaybookRun(**run.model_dump())
 
@@ -389,15 +502,25 @@ def _extract_tool_names(text: str) -> list[str]:
     return tool_names
 
 
-def _extract_trigger_time(text: str) -> str:
-    if "8点" in text or "08:00" in text:
-        return "08:00"
-    return "09:00"
-
-
 def _extract_publish_time(text: str) -> str | None:
     if "下午2点" in text or "14:00" in text:
         return "14:00"
+    return None
+
+
+def _requires_human_approval(text: str) -> bool:
+    return any(keyword in text for keyword in ["审批", "确认", "审核", "没问题后", "通过后", "同意后"])
+
+
+def _requires_message_push(text: str) -> bool:
+    return any(keyword in text for keyword in ["发给我", "发送给我", "推送给我", "通知我", "告诉我"])
+
+
+def _terminal_message_step_id(needs_approval: bool, needs_message_push: bool) -> str | None:
+    if needs_approval:
+        return "step_request_approval"
+    if needs_message_push:
+        return "step_push_message"
     return None
 
 
@@ -427,6 +550,18 @@ def _build_tool_inputs(run: PlaybookRun, step: PlaybookRunStep) -> dict:
     return inputs
 
 
+def _build_message_push_content(run: PlaybookRun, step: PlaybookRunStep):
+    for key in step.context_reads:
+        if key in run.shared_context:
+            return run.shared_context[key]
+
+    current_index = next((index for index, item in enumerate(run.steps) if item.id == step.id), 0)
+    for previous_step in reversed(run.steps[:current_index]):
+        if previous_step.output:
+            return previous_step.output
+    return run.shared_context or step.config.get("message_template")
+
+
 def _get_or_create_approval(
     run: PlaybookRun,
     step: PlaybookRunStep,
@@ -453,6 +588,15 @@ def _get_or_create_approval(
         },
         updated_at=_now(),
     )
+    try:
+        notification_result = send_approval_notification(approval)
+        approval.context["notification"] = notification_result
+    except Exception as exc:
+        approval.context["notification"] = {
+            "ok": False,
+            "channel": "telegram",
+            "error": str(exc),
+        }
     registry.approvals.append(approval)
     return approval
 

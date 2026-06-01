@@ -1,0 +1,50 @@
+[
+  {
+    "input": "待会儿提醒我看数据",
+    "now": "2026-06-01T14:20:00+08:00",
+    "output": {
+      "trigger_type": "scheduled",
+      "time": "14:30",
+      "timezone": "Asia/Shanghai",
+      "cron": "30 14 * * *",
+      "run_at": "2026-06-01T14:30:00+08:00",
+      "description": "未指定具体时间，默认 10 分钟后执行"
+    }
+  },
+  {
+    "input": "5分钟后提醒我检查内容",
+    "now": "2026-06-01T14:20:00+08:00",
+    "output": {
+      "trigger_type": "scheduled",
+      "time": "14:25",
+      "timezone": "Asia/Shanghai",
+      "cron": "25 14 * * *",
+      "run_at": "2026-06-01T14:25:00+08:00",
+      "description": "5 分钟后执行"
+    }
+  },
+  {
+    "input": "每天早上8点整理AI热点",
+    "now": "2026-06-01T14:20:00+08:00",
+    "output": {
+      "trigger_type": "daily",
+      "time": "08:00",
+      "timezone": "Asia/Shanghai",
+      "cron": "0 8 * * *",
+      "run_at": null,
+      "description": "每天 08:00 执行"
+    }
+  },
+  {
+    "input": "明天上午10点提醒我审批",
+    "now": "2026-06-01T14:20:00+08:00",
+    "output": {
+      "trigger_type": "scheduled",
+      "time": "10:00",
+      "timezone": "Asia/Shanghai",
+      "cron": "0 10 * * *",
+      "run_at": "2026-06-02T10:00:00+08:00",
+      "description": "10:00 执行"
+    }
+  }
+]

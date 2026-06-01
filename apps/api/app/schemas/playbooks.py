@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-PlaybookStepType = Literal["tool", "human_approval", "handoff", "noop"]
+PlaybookStepType = Literal["tool", "human_approval", "message_push", "handoff", "noop"]
 PlaybookStatus = Literal["active", "paused"]
 RunStatus = Literal["pending", "running", "waiting_approval", "scheduled", "completed", "failed", "cancelled"]
 ApprovalStatus = Literal["pending", "approved", "rejected"]
@@ -18,9 +18,12 @@ class CollaborationPolicy(BaseModel):
 
 
 class PlaybookTrigger(BaseModel):
-    type: Literal["daily"] = "daily"
+    type: Literal["immediate", "scheduled", "daily", "recurring"] = "daily"
     time: str
     timezone: str = "Asia/Shanghai"
+    cron: str | None = None
+    run_at: str | None = None
+    description: str | None = None
 
 
 class ToolStepConfig(BaseModel):

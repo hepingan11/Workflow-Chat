@@ -72,15 +72,19 @@
 
 推荐映射：
 
-- `trigger.type = "immediate"`
-- `trigger.once = true`
+- 如果没有明确时间，默认当前时间后 10 分钟
+- `trigger.type = "scheduled"`
+- `trigger.run_at = 当前时间 + 10 分钟`
+- `trigger.cron = 目标时间对应的 minute hour * * *`
 
 如果需要区分：
 
-- `马上` / `立刻` / `立即` / `现在`
-  - `delay_seconds = 0`
-- `等下` / `待会儿` / `稍后`
-  - `delay_seconds = 300`
+- `5分钟后`
+  - 当前时间 + 5 分钟
+- `2小时后`
+  - 当前时间 + 120 分钟
+- `待会儿` / `马上` / `等下` / `稍后`
+  - 当前时间 + 10 分钟
 
 ### 4.2 固定时刻类
 
@@ -138,6 +142,28 @@
 - `approval.required = true`
 - `on_approved_step_ids = [...]`
 - `on_rejected_step_ids = []` 或终止节点
+
+### 5.3 消息推送语义
+
+以下词汇只表示把结果发给用户，不表示需要用户确认：
+
+- `发给我`
+- `发送给我`
+- `推送给我`
+- `通知我`
+- `告诉我`
+
+推荐映射：
+
+- 生成 `message_push` 节点
+- 读取上一步输出或共享上下文
+- 通过当前配置的通知渠道发送，例如 Telegram
+- 推送完成后如果没有后续节点，则流程直接结束
+
+区分规则：
+
+- `发给我审批`、`发给我确认`、`我确认后` 映射为 `human_approval`
+- 单独的 `发给我`、`告诉我结果` 映射为 `message_push`
 
 ### 5.2 审批否决类
 
@@ -249,3 +275,22 @@
 - 风险等级：`高风险操作前必须问我`
 - 预算限制：`不要超过100元`
 - 平台优先级：`优先发小红书，再发抖音`
+
+## 12. 时间表达维护方式
+
+时间表达不要全部堆进一个大 prompt。推荐按下面顺序维护：
+
+- 高频确定表达写入规则层，例如 `N分钟后`、`N小时后`、`待会儿`、`马上`、`等下`、`每天早上8点`。
+- 容易变化的提示词要求写入模板文件，不写死在业务函数里。
+- 长尾表达和容易误判的案例写入 Few-shot 示例文件，用示例提升 LLM 稳定性。
+- LLM 输出必须经过结构化 schema 校验，校验失败时不进入执行链路。
+
+当前时间解析模块位于：
+
+- `apps/api/app/services/time_parser/`
+
+提示词和示例位于：
+
+- `apps/api/app/services/time_parser/prompts/system.md`
+- `apps/api/app/services/time_parser/prompts/user.md`
+- `apps/api/app/services/time_parser/prompts/examples.json`

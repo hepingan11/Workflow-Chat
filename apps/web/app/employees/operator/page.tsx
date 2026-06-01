@@ -24,41 +24,6 @@ type AgentToolDefinition = {
   executable: boolean;
 };
 
-type ParsedPlaybook = {
-  role_key: string;
-  name: string;
-  trigger: {
-    type: "daily";
-    time: string;
-    timezone: string;
-  };
-  collaboration: {
-    mode: "single_role" | "multi_role";
-    owner_role_key: string;
-    participant_role_keys: string[];
-    handoff_strategy: "manual" | "auto";
-    shared_context_keys: string[];
-  };
-  steps: Array<{
-    id: string;
-    name: string;
-    type: "tool" | "human_approval" | "handoff" | "noop";
-    role_key?: string | null;
-    assignee_role_key?: string | null;
-    participant_role_keys?: string[];
-    depends_on_step_ids?: string[];
-    handoff_to_role_key?: string | null;
-    next_step_ids?: string[];
-    on_approved_step_ids?: string[];
-    on_rejected_step_ids?: string[];
-    context_reads?: string[];
-    context_writes?: string[];
-    config: Record<string, unknown>;
-  }>;
-  referenced_tools: string[];
-  unresolved_tools?: string[];
-};
-
 type PlaybookRecord = {
   id: string;
   role_key: string;
@@ -70,7 +35,11 @@ type PlaybookRecord = {
   steps: Array<{
     id: string;
     name: string;
-    type: "tool" | "human_approval" | "handoff" | "noop";
+    type: "tool" | "human_approval" | "message_push" | "handoff" | "noop";
+    next_step_ids?: string[];
+    context_reads?: string[];
+    context_writes?: string[];
+    config?: Record<string, unknown>;
   }>;
   status: string;
 };
@@ -85,11 +54,14 @@ type RunRecord = {
   steps: Array<{
     id: string;
     name: string;
-    type: "tool" | "human_approval" | "handoff" | "noop";
+    type: "tool" | "human_approval" | "message_push" | "handoff" | "noop";
     status: string;
     approval_id?: string | null;
     error?: string | null;
     output?: Record<string, unknown> | null;
+    config?: Record<string, unknown>;
+    context_reads?: string[];
+    context_writes?: string[];
   }>;
 };
 
@@ -105,24 +77,15 @@ type ApprovalRecord = {
 
 export default function OperatorPage() {
   const [prompt, setPrompt] = useState("");
-  const [title, setTitle] = useState("新品功能上线公告");
-  const [copy, setCopy] = useState("我们准备发布一篇介绍数字员工运营控制能力的文章。");
-  const [platforms, setPlatforms] = useState("公众号, 小红书, B站");
-  const [materialUrl, setMaterialUrl] = useState("");
-  const [result, setResult] = useState("等待提交");
   const [tools, setTools] = useState<AgentToolDefinition[]>([]);
   const [selectedToolId, setSelectedToolId] = useState("");
   const [toolInputs, setToolInputs] = useState('{\n  "topic": "今天的 AI 最新新闻"\n}');
   const [toolResult, setToolResult] = useState("等待工具执行");
-  const [playbookName, setPlaybookName] = useState("AI 新闻视频日报");
-  const [naturalLanguage, setNaturalLanguage] = useState(
-    "对于运营：每天早上8点使用#{Ai最新新闻获取}工具获取最新的Ai新闻并整理成视频文案，使用#{视频生成}工具剪辑成视频，然后把消息发给我，我确认没问题后下午2点再使用#{抖音、小红书发布}工具发布到自媒体平台，有问题则不发布；",
-  );
-  const [parsedPlaybook, setParsedPlaybook] = useState<ParsedPlaybook | null>(null);
   const [playbooks, setPlaybooks] = useState<PlaybookRecord[]>([]);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [selectedPlaybookId, setSelectedPlaybookId] = useState("");
+  const [selectedRunId, setSelectedRunId] = useState("");
   const [workflowStatus, setWorkflowStatus] = useState("等待编排");
   const [isBusy, setIsBusy] = useState(false);
 
@@ -130,7 +93,7 @@ export default function OperatorPage() {
     fetch("/api/operator/prompt")
       .then((response) => response.json())
       .then((data) => setPrompt(data.prompt ?? ""))
-      .catch(() => setResult("无法读取提示词，请确认 API 代理或后端服务已启动。"));
+      .catch(() => setWorkflowStatus("无法读取提示词，请确认 API 代理或后端服务已启动。"));
 
     fetch("/api/agents/operator/tools")
       .then((response) => response.json())
@@ -163,6 +126,10 @@ export default function OperatorPage() {
       if (!selectedPlaybookId && Array.isArray(playbookData) && playbookData.length) {
         setSelectedPlaybookId(playbookData[0].id);
       }
+      const operatorRuns = (runsData ?? []).filter((item: RunRecord) => item.role_key === "operator");
+      if (!selectedRunId && operatorRuns.length) {
+        setSelectedRunId(operatorRuns[0].id);
+      }
     } catch {
       setWorkflowStatus("读取自动化任务失败");
     }
@@ -179,47 +146,9 @@ export default function OperatorPage() {
       if (!response.ok) {
         throw new Error("save failed");
       }
-      setResult("提示词已保存");
+      setWorkflowStatus("提示词已保存");
     } catch {
-      setResult("提示词保存失败");
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function submitPublish() {
-    setIsBusy(true);
-    try {
-      const response = await fetch("/api/operator/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          copy,
-          platforms: platforms
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
-          materials: materialUrl
-            ? [
-                {
-                  name: "运营素材",
-                  type: "link",
-                  url: materialUrl,
-                },
-              ]
-            : [],
-          workflow_provider: "dify",
-          dry_run: true,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(JSON.stringify(data));
-      }
-      setResult(JSON.stringify(data, null, 2));
-    } catch {
-      setResult("发布控制请求失败");
+      setWorkflowStatus("提示词保存失败");
     } finally {
       setIsBusy(false);
     }
@@ -254,58 +183,6 @@ export default function OperatorPage() {
     }
   }
 
-  async function parsePlaybook() {
-    setIsBusy(true);
-    try {
-      const response = await fetch("/api/playbooks/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role_key: "operator",
-          name: playbookName,
-          natural_language: naturalLanguage,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail ?? "parse failed");
-      }
-      setParsedPlaybook(data);
-      setWorkflowStatus("已生成结构化执行计划");
-    } catch (error) {
-      setParsedPlaybook(null);
-      setWorkflowStatus(error instanceof Error ? error.message : "任务解析失败");
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
-  async function savePlaybook() {
-    setIsBusy(true);
-    try {
-      const response = await fetch("/api/playbooks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          role_key: "operator",
-          name: playbookName,
-          natural_language: naturalLanguage,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.detail ?? "save failed");
-      }
-      setSelectedPlaybookId(data.id);
-      setWorkflowStatus("任务剧本已保存");
-      await refreshAutomation();
-    } catch (error) {
-      setWorkflowStatus(error instanceof Error ? error.message : "保存任务剧本失败");
-    } finally {
-      setIsBusy(false);
-    }
-  }
-
   async function triggerPlaybook() {
     if (!selectedPlaybookId) {
       setWorkflowStatus("请先选择一个任务剧本");
@@ -322,12 +199,61 @@ export default function OperatorPage() {
         throw new Error(data.detail ?? "trigger failed");
       }
       setWorkflowStatus(`已创建运行实例 ${data.id}`);
+      setSelectedRunId(data.id);
       await refreshAutomation();
     } catch (error) {
       setWorkflowStatus(error instanceof Error ? error.message : "触发运行失败");
     } finally {
       setIsBusy(false);
     }
+  }
+
+  async function deletePlaybook(playbookId: string, playbookName: string) {
+    const confirmed = window.confirm(`确定删除任务「${playbookName}」吗？相关运行实例和审批记录也会一起清理。`);
+    if (!confirmed) {
+      return;
+    }
+
+    setIsBusy(true);
+    try {
+      const response = await fetch(`/api/playbooks/${playbookId}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail ?? "delete failed");
+      }
+      setWorkflowStatus(`已删除任务 ${data.name}`);
+      setSelectedPlaybookId((current) => (current === playbookId ? "" : current));
+      setSelectedRunId("");
+      await refreshAutomation();
+    } catch (error) {
+      setWorkflowStatus(error instanceof Error ? error.message : "删除任务失败");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? runs[0];
+
+  function getPlaybookName(playbookId: string) {
+    return playbooks.find((item) => item.id === playbookId)?.name ?? playbookId;
+  }
+
+  function getStepTypeLabel(type: string) {
+    if (type === "tool") {
+      return "工具执行";
+    }
+    if (type === "human_approval") {
+      return "人工确认";
+    }
+    if (type === "message_push") {
+      return "消息推送";
+    }
+    if (type === "handoff") {
+      return "角色交接";
+    }
+    return "流程节点";
   }
 
   async function advanceRun(runId: string) {
@@ -380,7 +306,7 @@ export default function OperatorPage() {
             <p className="eyebrow">Operator Employee</p>
             <h1>运营员工管理</h1>
             <p className="lede">
-              这里管理运营员工的整理提示词、发布工作流输入、已授权工具，以及自然语言编排的长期自动化任务。
+              这里管理运营员工的提示词、已授权工具，并查看当前角色的任务、运行实例和节点执行日志。
             </p>
           </div>
           <div className="statusPanel">
@@ -390,7 +316,7 @@ export default function OperatorPage() {
         </div>
       </section>
 
-      <section className="operatorConsole" aria-label="运营发布控制台">
+      <section className="settingsPanel" aria-label="运营提示词配置">
         <div className="editorPanel">
           <div className="panelHeader">
             <FileText aria-hidden="true" />
@@ -402,38 +328,6 @@ export default function OperatorPage() {
           </div>
           <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} aria-label="运营整理提示词" />
         </div>
-
-        <div className="publishPanel">
-          <div className="panelHeader">
-            <Megaphone aria-hidden="true" />
-            <h2>发布工作流输入</h2>
-            <button type="button" onClick={submitPublish} disabled={isBusy} title="生成工作流输入">
-              <Play aria-hidden="true" />
-              Dry Run
-            </button>
-          </div>
-          <label>
-            标题
-            <input value={title} onChange={(event) => setTitle(event.target.value)} />
-          </label>
-          <label>
-            平台
-            <input value={platforms} onChange={(event) => setPlatforms(event.target.value)} />
-          </label>
-          <label>
-            素材链接
-            <input value={materialUrl} onChange={(event) => setMaterialUrl(event.target.value)} />
-          </label>
-          <label>
-            文案
-            <textarea value={copy} onChange={(event) => setCopy(event.target.value)} />
-          </label>
-        </div>
-      </section>
-
-      <section className="resultPanel" aria-label="执行结果">
-        <h2>API 执行结果</h2>
-        <pre>{result}</pre>
       </section>
 
       <section className="operatorConsole" aria-label="运营工具控制台">
@@ -472,42 +366,20 @@ export default function OperatorPage() {
       <section className="settingsPanel">
         <div className="panelHeader">
           <ShieldCheck aria-hidden="true" />
-          <h2>自然语言任务编排</h2>
+          <h2>当前运营任务</h2>
           <div className="toolActions">
             <button type="button" onClick={refreshAutomation} disabled={isBusy}>
               <RefreshCcw aria-hidden="true" />
               刷新
             </button>
-            <button type="button" onClick={parsePlaybook} disabled={isBusy}>
-              <FileText aria-hidden="true" />
-              解析
-            </button>
-            <button type="button" onClick={savePlaybook} disabled={isBusy}>
-              <Save aria-hidden="true" />
-              保存剧本
-            </button>
           </div>
         </div>
 
-        <label>
-          剧本名称
-          <input value={playbookName} onChange={(event) => setPlaybookName(event.target.value)} />
-        </label>
-        <label>
-          自然语言描述
-          <textarea value={naturalLanguage} onChange={(event) => setNaturalLanguage(event.target.value)} />
-        </label>
-
         <div className="operatorConsole automationConsole">
-          <div className="resultPanel">
-            <h2>解析预览</h2>
-            <pre>{parsedPlaybook ? JSON.stringify(parsedPlaybook, null, 2) : "等待解析"}</pre>
-          </div>
-
           <div className="publishPanel">
             <div className="panelHeader">
               <Megaphone aria-hidden="true" />
-              <h2>已保存剧本</h2>
+              <h2>任务列表</h2>
               <button type="button" onClick={triggerPlaybook} disabled={isBusy || !selectedPlaybookId}>
                 <Play aria-hidden="true" />
                 触发运行
@@ -525,39 +397,115 @@ export default function OperatorPage() {
               </select>
             </label>
             <div className="automationList">
-              {playbooks.map((item) => (
-                <article className="automationCard" key={item.id}>
-                  <h3>{item.name}</h3>
-                  <p>{item.natural_language}</p>
-                  <code>{item.id}</code>
-                </article>
-              ))}
+              {playbooks.length ? (
+                playbooks.map((item) => (
+                  <article className="automationCard" key={item.id}>
+                    <div className="automationCardHeader">
+                      <h3>{item.name}</h3>
+                      <button type="button" onClick={() => deletePlaybook(item.id, item.name)} disabled={isBusy}>
+                        <X aria-hidden="true" />
+                        删除
+                      </button>
+                    </div>
+                    <p>{item.natural_language}</p>
+                    <div className="taskMetaGrid">
+                      <span>状态：{item.status}</span>
+                      <span>触发：{item.trigger.time}</span>
+                      <span>节点：{item.steps.length}</span>
+                    </div>
+                    <div className="stepPills">
+                      {item.steps.map((step) => (
+                        <span key={step.id}>{getStepTypeLabel(step.type)} · {step.name}</span>
+                      ))}
+                    </div>
+                    <code>{item.id}</code>
+                  </article>
+                ))
+              ) : (
+                <p className="toolEmpty">当前运营角色还没有任务。可以先在首页用自然语言创建并保存。</p>
+              )}
+            </div>
+          </div>
+
+          <div className="publishPanel">
+            <div className="panelHeader">
+              <Play aria-hidden="true" />
+              <h2>运行实例</h2>
+            </div>
+            <label>
+              当前运行
+              <select value={selectedRunId} onChange={(event) => setSelectedRunId(event.target.value)}>
+                <option value="">请选择运行实例</option>
+                {runs.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {getPlaybookName(run.playbook_id)} · {run.status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="automationList">
+              {runs.length ? (
+                runs.map((run) => (
+                  <article className="automationCard" key={run.id}>
+                    <h3>{getPlaybookName(run.playbook_id)}</h3>
+                    <p>运行 ID：{run.id}</p>
+                    <div className="taskMetaGrid">
+                      <span>状态：{run.status}</span>
+                      <span>当前节点：{run.current_step_index + 1}</span>
+                      <span>调度：{run.scheduled_for}</span>
+                    </div>
+                    <button type="button" onClick={() => advanceRun(run.id)} disabled={isBusy}>
+                      推进运行
+                    </button>
+                  </article>
+                ))
+              ) : (
+                <p className="toolEmpty">还没有运行实例。</p>
+              )}
             </div>
           </div>
         </div>
       </section>
 
-      <section className="operatorConsole automationConsole" aria-label="运行与审批">
+      <section className="operatorConsole automationConsole" aria-label="节点日志与审批">
         <div className="publishPanel">
           <div className="panelHeader">
-            <Play aria-hidden="true" />
-            <h2>运行实例</h2>
+            <FileText aria-hidden="true" />
+            <h2>执行节点日志</h2>
           </div>
           <div className="automationList">
-            {runs.length ? (
-              runs.map((run) => (
-                <article className="automationCard" key={run.id}>
-                  <h3>{run.id}</h3>
-                  <p>状态：{run.status}</p>
-                  <p>调度时间：{run.scheduled_for}</p>
-                  <button type="button" onClick={() => advanceRun(run.id)} disabled={isBusy}>
-                    推进运行
-                  </button>
-                  <pre>{JSON.stringify(run.steps, null, 2)}</pre>
-                </article>
+            {selectedRun?.steps.length ? (
+              selectedRun.steps.map((step, index) => (
+                <details className="automationCard nodeLogCard" key={step.id}>
+                  <summary className="nodeLogHeader">
+                    <span>{index + 1}</span>
+                    <div>
+                      <h3>{step.name}</h3>
+                      <p>{getStepTypeLabel(step.type)} · {step.status}</p>
+                    </div>
+                  </summary>
+                  <div className="nodeLogBody">
+                    <div className="taskMetaGrid">
+                      <span>节点 ID：{step.id}</span>
+                      <span>审批：{step.approval_id || "无"}</span>
+                      <span>读写：{[...(step.context_reads ?? []), ...(step.context_writes ?? [])].join(" / ") || "无"}</span>
+                    </div>
+                    {step.error ? <p className="nodeError">错误：{step.error}</p> : null}
+                    <pre className="nodeLogPre">
+                      {JSON.stringify(
+                        {
+                          config: step.config ?? {},
+                          output: step.output ?? {},
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </div>
+                </details>
               ))
             ) : (
-              <p className="toolEmpty">还没有运行实例。</p>
+              <p className="toolEmpty">请选择一个运行实例查看节点日志。</p>
             )}
           </div>
         </div>
