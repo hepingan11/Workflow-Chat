@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class AiServiceFormat:
     OPENAI = "openai"
+    OPENAI_RESPONSES = "openai_responses"
     ANTHROPIC = "anthropic"
     FULL_URL = "full_url"
 
@@ -26,6 +27,16 @@ class ModelSettings(BaseModel):
     global_model: AiModelConfig = Field(default_factory=AiModelConfig)
     role_models: dict[str, RoleModelConfig] = Field(default_factory=dict)
     updated_at: str | None = None
+
+
+class ModelTestRequest(BaseModel):
+    settings: ModelSettings = Field(default_factory=ModelSettings)
+
+
+class ModelTestResponse(BaseModel):
+    ok: bool
+    message: str
+    detail: dict = Field(default_factory=dict)
 
 
 class PublicAiModelConfig(BaseModel):

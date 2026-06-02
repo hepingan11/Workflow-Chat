@@ -13,6 +13,7 @@ from app.services.playbooks import (
     advance_run,
     create_playbook,
     delete_playbook,
+    delete_run,
     list_approvals,
     list_playbooks,
     list_runs,
@@ -63,6 +64,11 @@ def delete_playbook_request(playbook_id: str) -> Playbook:
 @router.post("/runs/{run_id}/advance", response_model=PlaybookExecuteResponse)
 def advance_run_request(run_id: str) -> PlaybookExecuteResponse:
     return advance_run(run_id)
+
+
+@router.delete("/runs/{run_id}", response_model=PublicPlaybookRun)
+def delete_run_request(run_id: str) -> PublicPlaybookRun:
+    return delete_run(run_id)
 
 
 @router.get("/approvals", response_model=list[ApprovalRequest])

@@ -3,6 +3,8 @@ from fastapi import APIRouter
 from app.schemas.settings import (
     BossSettings,
     ModelSettings,
+    ModelTestRequest,
+    ModelTestResponse,
     NotificationSettings,
     NotificationTestResponse,
     PublicModelSettings,
@@ -10,7 +12,7 @@ from app.schemas.settings import (
     TelegramWebhookSetupRequest,
 )
 from app.services.boss_settings import read_boss_settings, write_boss_settings
-from app.services.model_settings import read_public_model_settings, update_model_settings
+from app.services.model_settings import read_public_model_settings, test_model_connection, update_model_settings
 from app.services.notification_settings import read_notification_settings
 from app.services.notification_settings import read_public_notification_settings, update_notification_settings
 from app.services.notifications import send_telegram_test_message, set_telegram_webhook
@@ -26,6 +28,11 @@ def get_model_config() -> PublicModelSettings:
 @router.put("/model-config", response_model=PublicModelSettings)
 def update_model_config(payload: ModelSettings) -> PublicModelSettings:
     return update_model_settings(payload)
+
+
+@router.post("/model-config/test", response_model=ModelTestResponse)
+def test_model_config(payload: ModelTestRequest) -> ModelTestResponse:
+    return test_model_connection(payload)
 
 
 @router.get("/boss-config", response_model=BossSettings)

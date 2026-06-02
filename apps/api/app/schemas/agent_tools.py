@@ -3,7 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-ToolSource = Literal["builtin", "dify"]
+ToolSource = Literal["builtin", "dify", "codex", "mcp"]
 
 
 class AgentToolDefinition(BaseModel):

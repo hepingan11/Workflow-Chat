@@ -139,6 +139,10 @@ def to_public_tool_record(tool: ToolRecord) -> PublicToolRecord:
         connection=PublicDifyToolConnection(
             base_url=tool.connection.base_url,
             has_api_key=bool(tool.connection.api_key),
+            model=tool.connection.model,
+            endpoint_path=tool.connection.endpoint_path,
+            mcp_tool_name=tool.connection.mcp_tool_name,
+            timeout_seconds=tool.connection.timeout_seconds,
         ),
         meta=tool.meta,
         updated_at=tool.updated_at,

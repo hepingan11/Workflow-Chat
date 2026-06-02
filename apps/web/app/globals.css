@@ -1,11 +1,13 @@
 :root {
-  --bg: #f3f0e8;
+  --bg: #efe8d8;
   --ink: #20211f;
   --muted: #666b61;
   --line: #d8d0bf;
   --panel: #fffaf0;
   --accent: #1f6f5f;
   --accent-2: #c64f2f;
+  --gold: #b88a2b;
+  --cyan: #1d8b7a;
   --shadow: 0 18px 50px rgb(32 33 31 / 12%);
 }
 
@@ -21,6 +23,8 @@ body {
 
 body {
   background:
+    radial-gradient(circle at 18% 4%, rgb(198 79 47 / 14%), transparent 28%),
+    radial-gradient(circle at 86% 12%, rgb(31 111 95 / 14%), transparent 30%),
     linear-gradient(90deg, rgb(31 111 95 / 8%) 1px, transparent 1px),
     linear-gradient(0deg, rgb(31 111 95 / 8%) 1px, transparent 1px),
     var(--bg);
@@ -33,6 +37,37 @@ body {
   width: min(1180px, calc(100% - 40px));
   margin: 0 auto;
   padding: 56px 0;
+}
+
+.homeShell {
+  position: relative;
+  width: min(1280px, calc(100% - 38px));
+}
+
+.homeShell::before,
+.homeShell::after {
+  position: fixed;
+  z-index: -1;
+  border-radius: 999px;
+  filter: blur(18px);
+  pointer-events: none;
+  content: "";
+}
+
+.homeShell::before {
+  top: 92px;
+  left: -70px;
+  width: 220px;
+  height: 220px;
+  background: rgb(198 79 47 / 12%);
+}
+
+.homeShell::after {
+  right: -80px;
+  bottom: 80px;
+  width: 300px;
+  height: 300px;
+  background: rgb(31 111 95 / 13%);
 }
 
 a {
@@ -49,6 +84,47 @@ a {
   padding-bottom: 32px;
 }
 
+.homeMasthead {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid rgb(32 33 31 / 14%);
+  background:
+    linear-gradient(135deg, rgb(255 250 240 / 96%), rgb(245 235 213 / 88%)),
+    var(--panel);
+  box-shadow: 0 30px 90px rgb(32 33 31 / 14%);
+  padding: clamp(28px, 4vw, 54px);
+}
+
+.homeMasthead::before {
+  position: absolute;
+  inset: 18px;
+  border: 1px solid rgb(31 111 95 / 18%);
+  pointer-events: none;
+  content: "";
+}
+
+.homeMasthead::after {
+  position: absolute;
+  top: -90px;
+  right: -80px;
+  width: 360px;
+  height: 360px;
+  border: 1px solid rgb(31 111 95 / 22%);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgb(31 111 95 / 14%), transparent 62%),
+    repeating-conic-gradient(from 0deg, rgb(31 111 95 / 14%) 0deg 8deg, transparent 8deg 18deg);
+  opacity: 0.8;
+  pointer-events: none;
+  content: "";
+}
+
+.homeMasthead > * {
+  position: relative;
+  z-index: 1;
+}
+
 .eyebrow {
   margin: 0 0 12px;
   color: var(--accent);
@@ -60,11 +136,11 @@ a {
 }
 
 h1 {
-  max-width: 760px;
+  max-width: 720px;
   margin: 0;
-  font-size: clamp(42px, 7vw, 88px);
-  line-height: 0.96;
-  letter-spacing: 0;
+  font-size: clamp(42px, 6vw, 90px);
+  line-height: 0.88;
+  letter-spacing: -0.045em;
 }
 
 .lede {
@@ -120,6 +196,16 @@ h1 {
   box-shadow: var(--shadow);
   font-family: "Courier New", monospace;
   font-size: 14px;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+}
+
+.serviceConfigButton:hover {
+  background: var(--accent);
+  box-shadow: 0 18px 44px rgb(31 111 95 / 20%);
+  transform: translateY(-3px);
 }
 
 .serviceConfigButton svg {
@@ -359,6 +445,16 @@ textarea {
 
 .homeComposerShell {
   margin-top: 34px;
+  position: relative;
+}
+
+.homeComposerShell::before {
+  display: block;
+  width: 76px;
+  height: 5px;
+  margin-bottom: 18px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2), var(--gold));
+  content: "";
 }
 
 .homeComposerHeader h2 {
@@ -379,12 +475,27 @@ textarea {
   position: relative;
   margin-top: 22px;
   overflow: visible;
-  border: 1px solid rgb(32 33 31 / 18%);
+  border: 1px solid rgb(32 33 31 / 20%);
   background:
-    radial-gradient(circle at top left, rgb(31 111 95 / 14%), transparent 34%),
+    linear-gradient(90deg, rgb(31 111 95 / 8%) 1px, transparent 1px),
+    linear-gradient(0deg, rgb(31 111 95 / 7%) 1px, transparent 1px),
+    radial-gradient(circle at 15% 0%, rgb(31 111 95 / 18%), transparent 32%),
+    radial-gradient(circle at 88% 90%, rgb(198 79 47 / 12%), transparent 34%),
     linear-gradient(180deg, rgb(255 250 240 / 96%), rgb(247 242 230 / 98%));
-  box-shadow: 0 28px 70px rgb(32 33 31 / 14%);
-  padding: 24px;
+  background-size: 30px 30px, 30px 30px, auto, auto, auto;
+  box-shadow: 0 34px 90px rgb(32 33 31 / 16%);
+  padding: clamp(20px, 3vw, 34px);
+}
+
+.commandCanvas::after {
+  position: absolute;
+  inset: auto 22px 18px auto;
+  width: 170px;
+  height: 88px;
+  border-right: 1px solid rgb(31 111 95 / 20%);
+  border-bottom: 1px solid rgb(31 111 95 / 20%);
+  pointer-events: none;
+  content: "";
 }
 
 .commandCanvasGlow {
@@ -393,7 +504,7 @@ textarea {
   width: 340px;
   height: 340px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgb(31 111 95 / 16%), transparent 72%);
+  background: radial-gradient(circle, rgb(31 111 95 / 22%), transparent 72%);
   pointer-events: none;
 }
 
@@ -413,6 +524,12 @@ textarea {
   font-family: "Courier New", monospace;
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.commandExamples {
+  border-left: 3px solid var(--accent);
+  background: rgb(255 253 248 / 62%);
+  padding: 12px 14px;
 }
 
 .typewriterLine {
@@ -441,16 +558,35 @@ textarea {
 
 .commandComposer textarea {
   min-height: 240px;
-  border: 1px solid rgb(32 33 31 / 14%);
-  background: rgb(255 253 248 / 88%);
-  padding: 18px 18px 20px;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 75%);
+  border: 1px solid rgb(32 33 31 / 18%);
+  background:
+    linear-gradient(180deg, rgb(255 253 248 / 92%), rgb(255 250 240 / 88%)),
+    #fffdf8;
+  padding: 22px 22px 24px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 82%),
+    0 18px 40px rgb(32 33 31 / 10%);
   font-size: 18px;
   line-height: 1.8;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.commandComposer textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 82%),
+    0 0 0 4px rgb(31 111 95 / 10%),
+    0 24px 58px rgb(31 111 95 / 13%);
+  transform: translateY(-2px);
 }
 
 .homePreviewPanel {
   margin-top: 20px;
+  scroll-margin-top: 24px;
 }
 
 .flowPreviewPanel {
@@ -865,12 +1001,16 @@ textarea {
 
 .mentionMenu {
   position: absolute;
-  z-index: 20;
-  top: calc(100% - 8px);
-  left: 0;
-  width: min(360px, 100%);
+  z-index: 80;
+  top: 64px;
+  left: 14px;
+  width: min(390px, calc(100% - 28px));
+  max-height: 238px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid rgb(32 33 31 / 14%);
-  background: rgb(255 250 240 / 98%);
+  background: rgb(255 250 240 / 94%);
+  backdrop-filter: blur(14px);
   box-shadow: 0 20px 60px rgb(32 33 31 / 16%);
   padding: 8px;
 }
@@ -913,6 +1053,17 @@ textarea {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
 .toolWorkbench {
   display: grid;
   grid-template-columns: minmax(280px, 0.34fr) minmax(0, 1fr);
@@ -943,9 +1094,24 @@ textarea {
   padding: 12px;
 }
 
+.toolListItem:disabled {
+  background: rgb(243 240 232 / 54%);
+  color: var(--muted);
+}
+
 .toolListItem.is-active {
   border-color: var(--accent);
   box-shadow: 0 12px 28px rgb(31 111 95 / 12%);
+}
+
+.operatorToolList {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.operatorToolList .toolListItem {
+  min-height: 118px;
+  align-content: start;
+  text-align: left;
 }
 
 .toolListItem small,
@@ -965,6 +1131,127 @@ small {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.parseCommandButton {
+  position: relative;
+  isolation: isolate;
+  min-width: 156px;
+  min-height: 76px;
+  overflow: hidden;
+  border: 1px solid rgb(31 111 95 / 42%);
+  background:
+    linear-gradient(135deg, #171915, #23251f 58%, #1f6f5f);
+  color: #fffaf0;
+  padding: 12px 16px;
+  box-shadow:
+    0 18px 44px rgb(32 33 31 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 12%);
+  transform-origin: center;
+}
+
+.parseCommandButton::before {
+  position: absolute;
+  inset: 8px;
+  z-index: -1;
+  border: 1px solid rgb(255 250 240 / 12%);
+  content: "";
+}
+
+.parseCommandButton::after {
+  position: absolute;
+  inset: auto 14px 10px 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgb(255 250 240 / 54%), transparent);
+  content: "";
+}
+
+.parseButtonSweep {
+  position: absolute;
+  inset: -40% auto -40% -42%;
+  width: 46%;
+  background: linear-gradient(90deg, transparent, rgb(255 250 240 / 22%), transparent);
+  transform: skewX(-18deg) translateX(-130%);
+  pointer-events: none;
+}
+
+.parseButtonSignal {
+  position: absolute;
+  top: 13px;
+  right: 14px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #56e0bf;
+  box-shadow: 0 0 0 5px rgb(86 224 191 / 10%), 0 0 18px rgb(86 224 191 / 72%);
+}
+
+.parseButtonIcon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgb(255 250 240 / 18%);
+  background: rgb(255 250 240 / 8%);
+}
+
+.parseButtonIcon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.parseButtonText {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+}
+
+.parseButtonText strong {
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+
+.parseButtonText small {
+  color: rgb(255 250 240 / 66%);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.parseCommandButton:hover:not(:disabled) {
+  border-color: rgb(86 224 191 / 64%);
+  box-shadow:
+    0 24px 60px rgb(31 111 95 / 24%),
+    inset 0 1px 0 rgb(255 255 255 / 18%);
+}
+
+.parseCommandButton:disabled .parseButtonSignal {
+  background: var(--gold);
+  box-shadow: 0 0 0 5px rgb(184 138 43 / 12%), 0 0 18px rgb(184 138 43 / 60%);
+  animation: parsePulse 1.1s ease-in-out infinite;
+}
+
+.parseCommandButton:disabled .parseButtonIcon svg {
+  animation: parseSpin 1.2s linear infinite;
+}
+
+@keyframes parsePulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.86);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
+
+@keyframes parseSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .toggleCard {
@@ -1007,6 +1294,12 @@ small {
   width: 16px;
   height: 16px;
   margin: 0;
+}
+
+.roleChipAll {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .toolTestConsole {
@@ -1173,6 +1466,44 @@ small {
   font-family: "Courier New", monospace;
 }
 
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background: rgb(32 33 31 / 46%);
+  padding: 24px;
+  backdrop-filter: blur(8px);
+}
+
+.modalPanel {
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid rgb(255 250 240 / 34%);
+  background:
+    linear-gradient(180deg, rgb(255 250 240 / 98%), rgb(247 242 230 / 98%)),
+    var(--panel);
+  box-shadow: 0 34px 100px rgb(32 33 31 / 32%);
+  padding: 20px;
+}
+
+.toolResultModal pre {
+  max-height: min(560px, calc(100vh - 178px));
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: #171915;
+  color: #dce8cf;
+  padding: 16px;
+  font-family: "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .advancedToggle {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1239,8 +1570,12 @@ small {
 .employeeCard {
   display: block;
   min-height: 220px;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(32 33 31 / 16%);
+  background:
+    linear-gradient(180deg, rgb(255 250 240 / 98%), rgb(247 242 230 / 92%)),
+    var(--panel);
   padding: 20px;
   box-shadow: var(--shadow);
   transition:
@@ -1249,10 +1584,42 @@ small {
     border-color 160ms ease;
 }
 
+.employeeCard::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--gold), var(--accent-2));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms ease;
+  content: "";
+}
+
+.employeeCard::after {
+  position: absolute;
+  right: -44px;
+  bottom: -44px;
+  width: 118px;
+  height: 118px;
+  border: 1px solid rgb(31 111 95 / 16%);
+  border-radius: 999px;
+  background: rgb(31 111 95 / 6%);
+  content: "";
+}
+
 .employeeCard:hover {
   border-color: var(--accent);
   box-shadow: 0 22px 60px rgb(31 111 95 / 16%);
   transform: translateY(-4px);
+}
+
+.employeeCard:hover::before {
+  transform: scaleX(1);
+}
+
+.employeeCard > * {
+  position: relative;
+  z-index: 1;
 }
 
 .cardTop {

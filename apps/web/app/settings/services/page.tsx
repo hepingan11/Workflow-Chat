@@ -6,10 +6,11 @@ import { useEffect, useState } from "react";
 
 import { employees } from "../../employees";
 
-type AiServiceFormat = "openai" | "anthropic" | "full_url";
+type AiServiceFormat = "openai" | "openai_responses" | "anthropic" | "full_url";
 
 const formatOptions: Array<{ value: AiServiceFormat; label: string }> = [
-  { value: "openai", label: "OpenAI" },
+  { value: "openai", label: "OpenAI Chat Completions" },
+  { value: "openai_responses", label: "OpenAI Responses" },
   { value: "anthropic", label: "Anthropic" },
   { value: "full_url", label: "完整 URL" },
 ];
@@ -25,6 +26,12 @@ function getBaseUrlPlaceholder(format: AiServiceFormat) {
 }
 
 function getBaseUrlHint(format: AiServiceFormat) {
+  if (format === "openai_responses") {
+    return "填写 OpenAI Responses 兼容的 API 根地址，例如 https://api.openai.com/v1；系统会自动请求 /responses。";
+  }
+  if (format === "openai") {
+    return "填写 OpenAI Chat Completions 兼容的 API 根地址，例如 https://api.openai.com/v1；系统会自动请求 /chat/completions。";
+  }
   if (format === "anthropic") {
     return "使用 Anthropic 兼容地址，通常填写 API 根地址。";
   }
@@ -264,6 +271,30 @@ export default function ServicesSettingsPage() {
     }
   }
 
+  async function testModelConnection() {
+    setIsBusy(true);
+    setStatus("正在测试 AI 接口...");
+    try {
+      const response = await fetch("/api/settings/model-config/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          settings: form,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        const extra = data.detail?.response_preview || data.detail?.error || "";
+        throw new Error(extra ? `${data.message} ${extra}` : data.message ?? "模型接口测试失败");
+      }
+      setStatus(data.detail?.reply ? `${data.message} 返回：${data.detail.reply}` : data.message);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "模型接口测试失败");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function saveBossSettings() {
     setIsBusy(true);
     try {
@@ -360,6 +391,10 @@ export default function ServicesSettingsPage() {
           <button type="button" onClick={saveSettings} disabled={isBusy} title="保存服务配置">
             <Save aria-hidden="true" />
             保存
+          </button>
+          <button type="button" onClick={() => testModelConnection()} disabled={isBusy} title="Test global AI model">
+            <Send aria-hidden="true" />
+            测试接口
           </button>
         </div>
         <div className="settingsGrid">

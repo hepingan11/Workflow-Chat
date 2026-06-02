@@ -3,7 +3,9 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.schemas.agent_tools import AgentToolDefinition, AgentToolExecuteResponse, AgentToolListResponse
 from app.services.agent_registry import get_agent
+from app.services.codex_tools import execute_codex_tool
 from app.services.dify_tools import execute_dify_tool
+from app.services.mcp_tools import execute_mcp_tool
 from app.services.tool_registry import get_tool, list_tools
 
 
@@ -24,26 +26,29 @@ def list_agent_tools(agent_key: str) -> AgentToolListResponse:
         for tool_name in agent.tools_allowed
     ]
 
-    dify_tools = [
+    registered_tools = [
         AgentToolDefinition(
             id=tool.id,
             name=tool.name,
             description=tool.description,
-            source="dify",
+            source=tool.provider,
             enabled=tool.enabled,
-            executable=tool.enabled and bool(tool.connection.api_key),
+            executable=tool.enabled and (tool.provider == "mcp" or bool(tool.connection.api_key)),
             provider=tool.provider,
             meta={
                 "app_mode": tool.meta.app_mode,
                 "user_input_form": tool.meta.user_input_form,
                 "base_url": tool.connection.base_url,
+                "model": tool.connection.model,
+                "endpoint_path": tool.connection.endpoint_path,
+                "mcp_tool_name": tool.connection.mcp_tool_name,
             },
         )
         for tool in list_tools()
         if tool.enabled and agent_key in tool.allowed_roles
     ]
 
-    return AgentToolListResponse(agent_key=agent_key, tools=[*builtin_tools, *dify_tools])
+    return AgentToolListResponse(agent_key=agent_key, tools=[*builtin_tools, *registered_tools])
 
 
 def execute_agent_tool(agent_key: str, tool_id: str, inputs: dict, user: str | None = None) -> AgentToolExecuteResponse:
@@ -61,12 +66,16 @@ def execute_agent_tool(agent_key: str, tool_id: str, inputs: dict, user: str | N
         raise HTTPException(status_code=400, detail="Tool is disabled")
     if agent_key not in tool.allowed_roles:
         raise HTTPException(status_code=403, detail="Tool is not authorized for this agent")
-    if not tool.connection.api_key:
+    if tool.provider != "mcp" and not tool.connection.api_key:
         raise HTTPException(status_code=400, detail="Tool API key is required")
 
-    result = execute_dify_tool(
-        tool,
-        inputs=inputs,
-        user=user or f"{settings.app_name.lower().replace(' ', '-')}-{agent_key}",
-    )
+    resolved_user = user or f"{settings.app_name.lower().replace(' ', '-')}-{agent_key}"
+    if tool.provider == "dify":
+        result = execute_dify_tool(tool, inputs=inputs, user=resolved_user)
+    elif tool.provider == "codex":
+        result = execute_codex_tool(tool, inputs=inputs, user=resolved_user)
+    elif tool.provider == "mcp":
+        result = execute_mcp_tool(tool, inputs=inputs, user=resolved_user)
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported tool provider: {tool.provider}")
     return AgentToolExecuteResponse(agent_key=agent_key, tool_id=tool_id, result=result)

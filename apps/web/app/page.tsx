@@ -1,10 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, Clock3, FileText, GitBranch, MessageSquare, Save, Settings, ShieldCheck, Wrench } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, CheckCircle2, Clock3, FileText, GitBranch, Radar, MessageSquare, Save, Settings, ShieldCheck, Wrench } from "lucide-react";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 
 import { employees } from "./employees";
+
+gsap.registerPlugin(useGSAP);
 
 type ParsedPlaybook = {
   role_key: string;
@@ -250,11 +254,15 @@ function getStepConnections(step: ParsedPlaybook["steps"][number], playbook: Par
 }
 
 export default function Home() {
+  const shellRef = useRef<HTMLElement | null>(null);
+  const parseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
   const [command, setCommand] = useState("");
   const [status, setStatus] = useState("Control layer first");
   const [selectedRoleKey, setSelectedRoleKey] = useState("");
   const [mentionRange, setMentionRange] = useState<{ mentionStart: number; mentionEnd: number } | null>(null);
   const [toolRange, setToolRange] = useState<{ toolStart: number; toolEnd: number } | null>(null);
+  const [suggestionTop, setSuggestionTop] = useState(64);
   const [suggestionMode, setSuggestionMode] = useState<SuggestionMode | null>(null);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [parsedPlaybook, setParsedPlaybook] = useState<ParsedPlaybook | null>(null);
@@ -283,6 +291,66 @@ export default function Home() {
     const candidateTools = selectedRoleKey ? roleTools : allTools;
     return candidateTools.filter((tool) => tool.name.toLowerCase().includes(query));
   }, [allTools, command, roleTools, selectedRoleKey, suggestionMode, toolRange]);
+
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(
+        {
+          reduceMotion: "(prefers-reduced-motion: reduce)",
+          isDesktop: "(min-width: 860px)",
+        },
+        (context) => {
+          const { reduceMotion, isDesktop } = context.conditions ?? {};
+          if (reduceMotion) {
+            gsap.set(".homeReveal", { autoAlpha: 1, y: 0, scale: 1 });
+            return;
+          }
+
+          gsap.from(".homeReveal", {
+            autoAlpha: 0,
+            y: 28,
+            scale: 0.98,
+            duration: 0.8,
+            ease: "power3.out",
+            stagger: 0.09,
+          });
+
+          gsap.from(".parseCommandButton", {
+            autoAlpha: 0,
+            x: 18,
+            rotation: -2,
+            duration: 0.7,
+            delay: 0.28,
+            ease: "back.out(1.8)",
+          });
+
+          if (isDesktop) {
+            gsap.to(".commandCanvasGlow", {
+              x: 26,
+              y: -18,
+              scale: 1.08,
+              duration: 5.5,
+              repeat: -1,
+              yoyo: true,
+              ease: "sine.inOut",
+            });
+            gsap.to(".employeeCard", {
+              y: -5,
+              duration: 2.8,
+              repeat: -1,
+              yoyo: true,
+              ease: "sine.inOut",
+              stagger: { each: 0.18, from: "center" },
+            });
+          }
+        },
+      );
+
+      return () => mm.revert();
+    },
+    { scope: shellRef },
+  );
 
   useEffect(() => {
     const currentExample = exampleCommands[exampleIndex];
@@ -334,9 +402,18 @@ export default function Home() {
       .catch(() => setRoleTools([]));
   }, [selectedRoleKey]);
 
-  function updateComposerState(value: string, caretIndex: number) {
+  function updateComposerState(value: string, caretIndex: number, target?: HTMLTextAreaElement) {
     const mention = detectMentionQuery(value, caretIndex);
     const tool = detectToolQuery(value, caretIndex);
+    if (target) {
+      const computed = window.getComputedStyle(target);
+      const fontSize = Number.parseFloat(computed.fontSize) || 18;
+      const lineHeight = Number.parseFloat(computed.lineHeight) || fontSize * 1.8;
+      const paddingTop = Number.parseFloat(computed.paddingTop) || 22;
+      const linesBeforeCaret = value.slice(0, caretIndex).split("\n").length - 1;
+      const nextTop = paddingTop + linesBeforeCaret * lineHeight - target.scrollTop + lineHeight + 10;
+      setSuggestionTop(Math.max(48, Math.min(nextTop, target.clientHeight - 24)));
+    }
 
     setMentionRange(mention ? { mentionStart: mention.mentionStart, mentionEnd: mention.mentionEnd } : null);
     setToolRange(tool ? { toolStart: tool.toolStart, toolEnd: tool.toolEnd } : null);
@@ -377,6 +454,56 @@ export default function Home() {
     setActiveSuggestionIndex(0);
   }
 
+  function animateParseButton(kind: "enter" | "leave" | "press") {
+    const button = parseButtonRef.current;
+    if (!button) {
+      return;
+    }
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    if (kind === "enter") {
+      gsap.to(button, {
+        y: -3,
+        scale: 1.02,
+        duration: 0.28,
+        ease: "power2.out",
+        overwrite: "auto",
+      });
+      gsap.to(button.querySelector(".parseButtonSweep"), {
+        xPercent: 130,
+        duration: 0.75,
+        ease: "power3.out",
+        overwrite: "auto",
+      });
+      return;
+    }
+
+    if (kind === "press") {
+      gsap.fromTo(
+        button,
+        { scale: 0.98 },
+        { scale: 1.02, duration: 0.22, ease: "back.out(2)", overwrite: "auto" },
+      );
+      return;
+    }
+
+    gsap.to(button, {
+      y: 0,
+      scale: 1,
+      duration: 0.28,
+      ease: "power2.out",
+      overwrite: "auto",
+    });
+    gsap.set(button.querySelector(".parseButtonSweep"), { xPercent: -130 });
+  }
+
+  async function handleParseClick() {
+    animateParseButton("press");
+    await parseCommand();
+  }
+
   async function parseCommand() {
     if (!selectedRoleKey) {
       setStatus("请先通过 @ 选择一个员工角色");
@@ -401,6 +528,23 @@ export default function Home() {
       setParsedPlaybook(data);
       setShowPreview(true);
       setStatus(`已解析给 ${selectedRoleKey} 的任务`);
+      requestAnimationFrame(() => {
+        previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches && previewRef.current) {
+          gsap.fromTo(
+            previewRef.current,
+            { y: 18, boxShadow: "0 18px 50px rgb(32 33 31 / 12%)" },
+            {
+              y: 0,
+              boxShadow: "0 30px 90px rgb(31 111 95 / 18%)",
+              duration: 0.55,
+              ease: "power3.out",
+              yoyo: true,
+              repeat: 1,
+            },
+          );
+        }
+      });
     } catch (error) {
       setParsedPlaybook(null);
       setShowPreview(false);
@@ -431,7 +575,7 @@ export default function Home() {
       if (!response.ok) {
         throw new Error(data.detail ?? "save failed");
       }
-      setStatus(`已保存 ${selectedRoleKey} 的任务剧本`);
+      setStatus(`已保存任务：${data.name}`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "保存失败");
     } finally {
@@ -442,8 +586,8 @@ export default function Home() {
   const activeItems = suggestionMode === "employee" ? filteredEmployees : filteredTools;
 
   return (
-    <main className="shell">
-      <section className="masthead">
+    <main className="shell homeShell" ref={shellRef}>
+      <section className="masthead homeMasthead homeReveal">
         <div>
           <p className="eyebrow">Digital Employee OS</p>
           <h1>Guiwuli数字员工</h1>
@@ -459,7 +603,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="homeComposerShell">
+      <section className="homeComposerShell homeReveal">
         <div className="homeComposerHeader">
           <p className="eyebrow">Natural Language Orchestration</p>
           <p className="homeComposerHint">
@@ -478,14 +622,26 @@ export default function Home() {
               </div>
             </div>
             <div className="toolActions">
-              <button type="button" onClick={parseCommand} disabled={isBusy}>
-                <FileText aria-hidden="true" />
-                解析
+              <button
+                className="parseCommandButton"
+                type="button"
+                ref={parseButtonRef}
+                onClick={handleParseClick}
+                onMouseEnter={() => animateParseButton("enter")}
+                onMouseLeave={() => animateParseButton("leave")}
+                disabled={isBusy}
+              >
+                <span className="parseButtonSweep" aria-hidden="true" />
+                <span className="parseButtonSignal" aria-hidden="true" />
+                <span className="parseButtonIcon">
+                  {isBusy ? <Radar aria-hidden="true" /> : <FileText aria-hidden="true" />}
+                </span>
+                <span className="parseButtonText">
+                  <strong>{isBusy ? "解析中" : "解析"}</strong>
+                  <small>Compile workflow</small>
+                </span>
               </button>
-              <button type="button" onClick={savePlaybook} disabled={isBusy}>
-                <Save aria-hidden="true" />
-                保存剧本
-              </button>
+              
             </div>
           </div>
 
@@ -494,11 +650,18 @@ export default function Home() {
               value={command}
               onChange={(event) => {
                 setCommand(event.target.value);
-                updateComposerState(event.target.value, event.target.selectionStart ?? event.target.value.length);
+                updateComposerState(event.target.value, event.target.selectionStart ?? event.target.value.length, event.target);
               }}
               onClick={(event) => {
                 const target = event.target as HTMLTextAreaElement;
-                updateComposerState(target.value, target.selectionStart ?? target.value.length);
+                updateComposerState(target.value, target.selectionStart ?? target.value.length, target);
+              }}
+              onKeyUp={(event) => {
+                if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) {
+                  return;
+                }
+                const target = event.target as HTMLTextAreaElement;
+                updateComposerState(target.value, target.selectionStart ?? target.value.length, target);
               }}
               onKeyDown={(event) => {
                 if (!suggestionMode || !activeItems.length) {
@@ -530,7 +693,12 @@ export default function Home() {
             />
 
             {suggestionMode && activeItems.length ? (
-              <div className="mentionMenu" role="listbox" aria-label={suggestionMode === "employee" ? "员工选择" : "工具选择"}>
+              <div
+                className="mentionMenu"
+                role="listbox"
+                style={{ top: suggestionTop }}
+                aria-label={suggestionMode === "employee" ? "员工选择" : "工具选择"}
+              >
                 {suggestionMode === "employee"
                   ? filteredEmployees.map((employee, index) => (
                       <button
@@ -566,7 +734,7 @@ export default function Home() {
         </section>
 
         {showPreview && parsedPlaybook ? (
-          <div className="flowPreviewPanel homePreviewPanel">
+          <div className="flowPreviewPanel homePreviewPanel homeReveal" ref={previewRef}>
             <div className="flowPreviewHeader">
               <div>
                 <p className="eyebrow">Parsed Playbook</p>
@@ -696,7 +864,7 @@ export default function Home() {
         ) : null}
       </section>
 
-      <section className="quickActions" aria-label="服务配置">
+      <section className="quickActions homeReveal" aria-label="服务配置">
         <Link className="serviceConfigButton" href="/settings/services">
           <Settings aria-hidden="true" />
           服务配置
@@ -709,7 +877,7 @@ export default function Home() {
         </Link>
       </section>
 
-      <section className="employeeGrid" aria-label="数字员工角色">
+      <section className="employeeGrid homeReveal" aria-label="数字员工角色">
         {employees.map((employee) => {
           const Icon = employee.icon;
           return (

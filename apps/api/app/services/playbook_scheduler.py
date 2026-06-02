@@ -59,6 +59,8 @@ def schedule_due_playbooks() -> int:
     for playbook in list_playbooks():
         if playbook.status != "active":
             continue
+        if playbook.trigger.type in {"immediate", "scheduled"}:
+            continue
         if playbook.trigger.type == "immediate" and has_any_run(playbook.id):
             continue
 

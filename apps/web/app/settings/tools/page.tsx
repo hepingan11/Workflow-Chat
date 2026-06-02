@@ -10,12 +10,16 @@ type ToolRecord = {
   id: string;
   name: string;
   description: string;
-  provider: "dify";
+  provider: ToolProvider;
   enabled: boolean;
   allowed_roles: string[];
   connection: {
     base_url: string;
     has_api_key: boolean;
+    model: string;
+    endpoint_path: string;
+    mcp_tool_name: string;
+    timeout_seconds: number;
   };
   meta: {
     app_name: string;
@@ -29,14 +33,20 @@ type ToolRecord = {
 type ToolForm = {
   name: string;
   description: string;
-  provider: "dify";
+  provider: ToolProvider;
   enabled: boolean;
   allowed_roles: string[];
   connection: {
     base_url: string;
     api_key: string;
+    model: string;
+    endpoint_path: string;
+    mcp_tool_name: string;
+    timeout_seconds: number;
   };
 };
+
+type ToolProvider = "dify" | "codex" | "mcp";
 
 const emptyForm: ToolForm = {
   name: "",
@@ -47,6 +57,10 @@ const emptyForm: ToolForm = {
   connection: {
     base_url: "",
     api_key: "",
+    model: "",
+    endpoint_path: "",
+    mcp_tool_name: "",
+    timeout_seconds: 60,
   },
 };
 
@@ -80,6 +94,10 @@ export default function ToolsSettingsPage() {
       connection: {
         base_url: tool.connection.base_url,
         api_key: "",
+        model: tool.connection.model,
+        endpoint_path: tool.connection.endpoint_path,
+        mcp_tool_name: tool.connection.mcp_tool_name,
+        timeout_seconds: tool.connection.timeout_seconds,
       },
     });
   }
@@ -108,7 +126,20 @@ export default function ToolsSettingsPage() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function updateConnection(field: keyof ToolForm["connection"], value: string) {
+  function updateProvider(provider: ToolProvider) {
+    setForm((current) => ({
+      ...current,
+      provider,
+      connection: {
+        ...current.connection,
+        endpoint_path: getDefaultEndpointPath(provider, current.connection.endpoint_path),
+        timeout_seconds: current.connection.timeout_seconds || 60,
+      },
+    }));
+    setTestPayload(getDefaultTestPayload(provider));
+  }
+
+  function updateConnection(field: keyof ToolForm["connection"], value: string | number) {
     setForm((current) => ({
       ...current,
       connection: {
@@ -125,6 +156,17 @@ export default function ToolsSettingsPage() {
         ? current.allowed_roles.filter((key) => key !== roleKey)
         : [...current.allowed_roles, roleKey],
     }));
+  }
+
+  function toggleAllRoles() {
+    setForm((current) => {
+      const allRoleKeys = employees.map((employee) => employee.key);
+      const hasAllRoles = allRoleKeys.every((key) => current.allowed_roles.includes(key));
+      return {
+        ...current,
+        allowed_roles: hasAllRoles ? [] : allRoleKeys,
+      };
+    });
   }
 
   async function saveTool() {
@@ -238,6 +280,31 @@ export default function ToolsSettingsPage() {
     }
   }
 
+  function getDefaultEndpointPath(provider: ToolProvider, currentPath: string) {
+    if (currentPath) {
+      return currentPath;
+    }
+    if (provider === "codex") {
+      return "/responses";
+    }
+    if (provider === "mcp") {
+      return "/mcp";
+    }
+    return "";
+  }
+
+  function getDefaultTestPayload(provider: ToolProvider) {
+    if (provider === "codex") {
+      return '{\n  "prompt": "请总结今天适合运营关注的 AI 新闻。"\n}';
+    }
+    if (provider === "mcp") {
+      return '{\n  "query": "请获取今天适合运营关注的 AI 新闻"\n}';
+    }
+    return "{\n  \n}";
+  }
+
+  const providerLabel = form.provider === "codex" ? "Codex" : form.provider === "mcp" ? "MCP" : "Dify";
+
   return (
     <main className="shell">
       <section className="employeeHero">
@@ -248,9 +315,9 @@ export default function ToolsSettingsPage() {
         <div className="employeeHeroGrid">
           <div>
             <p className="eyebrow">Tool Registry</p>
-            <h1>Dify 工具管理</h1>
+            <h1>工具管理</h1>
             <p className="lede">
-              将 Dify workflow 注册为平台工具，读取工作流元数据，并授权给指定数字员工角色使用。
+              将 Dify workflow、Codex API 或 MCP 工具注册为平台能力，并授权给指定数字员工角色使用。
             </p>
           </div>
           <div className="statusPanel">
@@ -318,7 +385,11 @@ export default function ToolsSettingsPage() {
             </label>
             <label>
               Provider
-              <input value={form.provider} readOnly />
+              <select value={form.provider} onChange={(event) => updateProvider(event.target.value as ToolProvider)}>
+                <option value="dify">Dify Workflow</option>
+                <option value="codex">Codex API</option>
+                <option value="mcp">MCP Tool</option>
+              </select>
             </label>
             <label className="toggleLabel toggleCard">
               <input
@@ -337,34 +408,115 @@ export default function ToolsSettingsPage() {
 
           <div className="settingsGrid toolSettingsGrid">
             <label>
-              Dify Base URL
+              {providerLabel} Base URL
               <input
                 value={form.connection.base_url}
                 onChange={(event) => updateConnection("base_url", event.target.value)}
-                placeholder="https://api.dify.ai/v1"
+                placeholder={
+                  form.provider === "codex"
+                    ? "https://api.openai.com/v1"
+                    : form.provider === "mcp"
+                      ? "http://127.0.0.1:3001"
+                      : "https://api.dify.ai/v1"
+                }
               />
             </label>
             <label>
-              App API Key
+              {form.provider === "mcp" ? "API Key / Token（可选）" : "API Key"}
               <input
                 value={form.connection.api_key}
                 onChange={(event) => updateConnection("api_key", event.target.value)}
-                placeholder={selectedTool?.connection.has_api_key ? "留空表示保留已保存密钥" : "app-xxx"}
+                placeholder={
+                  selectedTool?.connection.has_api_key
+                    ? "留空表示保留已保存密钥"
+                    : form.provider === "codex"
+                      ? "sk-xxx"
+                      : form.provider === "mcp"
+                        ? "Bearer token，可留空"
+                        : "app-xxx"
+                }
                 type="password"
               />
             </label>
-            <label>
-              元数据同步
-              <button type="button" onClick={syncTool} disabled={!selectedTool || busyAction !== ""}>
-                <ArrowRight aria-hidden="true" />
-                读取 /info 和 /parameters
-              </button>
-            </label>
+            {form.provider === "dify" ? (
+              <label>
+                元数据同步
+                <button type="button" onClick={syncTool} disabled={!selectedTool || busyAction !== ""}>
+                  <ArrowRight aria-hidden="true" />
+                  读取 /info 和 /parameters
+                </button>
+              </label>
+            ) : form.provider === "codex" ? (
+              <label>
+                模型名称
+                <input
+                  value={form.connection.model}
+                  onChange={(event) => updateConnection("model", event.target.value)}
+                  placeholder="gpt-5.1-codex 或兼容模型名"
+                />
+              </label>
+            ) : (
+              <label>
+                MCP Tool Name
+                <input
+                  value={form.connection.mcp_tool_name}
+                  onChange={(event) => updateConnection("mcp_tool_name", event.target.value)}
+                  placeholder="服务端 tools/list 中的工具名，留空使用工具名称"
+                />
+              </label>
+            )}
           </div>
+
+          {form.provider === "codex" || form.provider === "mcp" ? (
+            <div className="settingsGrid toolSettingsGrid">
+              <label>
+                Endpoint Path
+                <input
+                  value={form.connection.endpoint_path}
+                  onChange={(event) => updateConnection("endpoint_path", event.target.value)}
+                  placeholder={form.provider === "mcp" ? "/mcp" : "/responses"}
+                />
+              </label>
+              <label>
+                请求超时（秒）
+                <input
+                  min={5}
+                  value={form.connection.timeout_seconds}
+                  onChange={(event) => updateConnection("timeout_seconds", Number(event.target.value) || 60)}
+                  type="number"
+                />
+              </label>
+              <div className="settingsHintCard">
+                {form.provider === "mcp" ? (
+                  <>
+                    MCP 工具会按 JSON-RPC 调用：
+                    <code>tools/call</code>
+                    <code>name</code>
+                    <code>arguments</code>
+                  </>
+                ) : (
+                  <>
+                    Codex 工具会按 OpenAI Responses 兼容格式发送：
+                    <code>model</code>
+                    <code>input</code>
+                    <code>metadata</code>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           <div className="toolRoles">
             <h3>授权角色</h3>
             <div className="roleChips">
+              <label className="roleChip roleChipAll">
+                <input
+                  checked={employees.every((employee) => form.allowed_roles.includes(employee.key))}
+                  onChange={toggleAllRoles}
+                  type="checkbox"
+                />
+                <span>全部</span>
+              </label>
               {employees.map((employee) => (
                 <label className="roleChip" key={employee.key}>
                   <input
@@ -381,10 +533,24 @@ export default function ToolsSettingsPage() {
           {selectedTool ? (
             <>
               <div className="toolMetaPanel">
-                <h3>同步结果</h3>
-                <p>应用名称：{selectedTool.meta.app_name || "未同步"}</p>
-                <p>应用模式：{selectedTool.meta.app_mode || "未同步"}</p>
-                <p>输入字段数：{selectedTool.meta.user_input_form.length}</p>
+                <h3>{selectedTool.provider === "dify" ? "同步结果" : "连接配置"}</h3>
+                {selectedTool.provider === "dify" ? (
+                  <>
+                    <p>应用名称：{selectedTool.meta.app_name || "未同步"}</p>
+                    <p>应用模式：{selectedTool.meta.app_mode || "未同步"}</p>
+                    <p>输入字段数：{selectedTool.meta.user_input_form.length}</p>
+                  </>
+                ) : (
+                  <>
+                    {selectedTool.provider === "mcp" ? (
+                      <p>MCP 工具名：{selectedTool.connection.mcp_tool_name || selectedTool.name}</p>
+                    ) : (
+                      <p>模型名称：{selectedTool.connection.model || "未填写"}</p>
+                    )}
+                    <p>接口路径：{selectedTool.connection.endpoint_path || (selectedTool.provider === "mcp" ? "/mcp" : "/responses")}</p>
+                    <p>超时时间：{selectedTool.connection.timeout_seconds} 秒</p>
+                  </>
+                )}
               </div>
 
               <div className="operatorConsole toolTestConsole">
@@ -397,7 +563,11 @@ export default function ToolsSettingsPage() {
                     </button>
                   </div>
                   <label>
-                    Workflow Inputs JSON
+                    {selectedTool.provider === "codex"
+                      ? "Codex Inputs JSON"
+                      : selectedTool.provider === "mcp"
+                        ? "MCP Arguments JSON"
+                        : "Workflow Inputs JSON"}
                     <textarea value={testPayload} onChange={(event) => setTestPayload(event.target.value)} />
                   </label>
                 </section>

@@ -2,6 +2,8 @@ from datetime import datetime
 
 import httpx
 
+from app.schemas.settings import AiServiceFormat
+from app.services.model_settings import extract_responses_text
 from app.services.model_settings import read_model_settings
 from app.services.time_parser.constants import LLM_TIMEOUT_SECONDS
 from app.services.time_parser.prompts import render_time_messages
@@ -15,25 +17,51 @@ def parse_time_by_llm(text: str, role_key: str | None, now: datetime) -> ParsedT
         return None
 
     try:
+        content = request_time_parse_content(model, text, now)
+        return parse_structured_time_output(content)
+    except Exception:
+        return None
+
+
+def request_time_parse_content(model: dict, text: str, now: datetime) -> str:
+    messages = render_time_messages(text, now.isoformat())
+    if model.get("format") == AiServiceFormat.OPENAI_RESPONSES:
+        instructions = next((item["content"] for item in messages if item["role"] == "system"), "")
+        user_input = "\n\n".join(item["content"] for item in messages if item["role"] != "system")
         response = httpx.post(
-            f"{model['base_url'].rstrip('/')}/chat/completions",
+            f"{model['base_url'].rstrip('/')}/responses",
             headers={
                 "Authorization": f"Bearer {model['api_key']}",
                 "Content-Type": "application/json",
             },
             json={
                 "model": model["model_name"],
-                "messages": render_time_messages(text, now.isoformat()),
+                "instructions": instructions,
+                "input": user_input,
                 "temperature": 0,
-                "response_format": {"type": "json_object"},
+                "text": {"format": {"type": "json_object"}},
             },
             timeout=LLM_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-        return parse_structured_time_output(content)
-    except Exception:
-        return None
+        return extract_responses_text(response.json())
+
+    response = httpx.post(
+        f"{model['base_url'].rstrip('/')}/chat/completions",
+        headers={
+            "Authorization": f"Bearer {model['api_key']}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model["model_name"],
+            "messages": messages,
+            "temperature": 0,
+            "response_format": {"type": "json_object"},
+        },
+        timeout=LLM_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json()["choices"][0]["message"]["content"]
 
 
 def select_model_config(role_key: str | None) -> dict | None:

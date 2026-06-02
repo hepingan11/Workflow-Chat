@@ -5,7 +5,7 @@ import {
   ArrowLeft,
   CheckCheck,
   FileText,
-  Megaphone,
+  BriefcaseBusiness,
   Play,
   RefreshCcw,
   Save,
@@ -72,11 +72,15 @@ type ApprovalRecord = {
   message: string;
 };
 
-export default function OperatorPage() {
+const ROLE_KEY = "product_manager";
+const ROLE_NAME = "产品经理";
+const ROLE_ENGLISH_NAME = "Product Manager Employee";
+
+export default function ProductManagerPage() {
   const [prompt, setPrompt] = useState("");
   const [tools, setTools] = useState<AgentToolDefinition[]>([]);
   const [selectedToolId, setSelectedToolId] = useState("");
-  const [toolInputs, setToolInputs] = useState('{\n  "topic": "今天的 AI 最新新闻"\n}');
+  const [toolInputs, setToolInputs] = useState('{\n  "requirement": "用户希望支持自然语言创建任务并查看执行进度",\n  "goal": "整理需求拆解、验收标准和风险点"\n}');
   const [toolResult, setToolResult] = useState("");
   const [showToolResult, setShowToolResult] = useState(false);
   const [playbooks, setPlaybooks] = useState<PlaybookRecord[]>([]);
@@ -88,12 +92,12 @@ export default function OperatorPage() {
   const [isBusy, setIsBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/operator/prompt")
+    fetch(`/api/agents/${ROLE_KEY}/prompt`)
       .then((response) => response.json())
       .then((data) => setPrompt(data.prompt ?? ""))
       .catch(() => setWorkflowStatus("无法读取提示词，请确认后端服务已启动。"));
 
-    fetch("/api/agents/operator/tools")
+    fetch(`/api/agents/${ROLE_KEY}/tools`)
       .then((response) => response.json())
       .then((data) => {
         const nextTools = data.tools ?? [];
@@ -103,7 +107,7 @@ export default function OperatorPage() {
           setSelectedToolId(firstExecutable.id);
         }
       })
-      .catch(() => setWorkflowStatus("无法读取运营员工工具列表。"));
+      .catch(() => setWorkflowStatus(`无法读取${ROLE_NAME}工具列表。`));
 
     refreshAutomation();
   }, []);
@@ -111,24 +115,24 @@ export default function OperatorPage() {
   async function refreshAutomation() {
     try {
       const [playbooksResponse, runsResponse, approvalsResponse] = await Promise.all([
-        fetch("/api/playbooks?role_key=operator"),
+        fetch(`/api/playbooks?role_key=${ROLE_KEY}`),
         fetch("/api/playbooks/runs"),
-        fetch("/api/playbooks/approvals?role_key=operator"),
+        fetch(`/api/playbooks/approvals?role_key=${ROLE_KEY}`),
       ]);
       const playbookData = await playbooksResponse.json();
       const runsData = await runsResponse.json();
       const approvalsData = await approvalsResponse.json();
-      const operatorRuns = (runsData ?? []).filter((item: RunRecord) => item.role_key === "operator");
+      const roleRuns = (runsData ?? []).filter((item: RunRecord) => item.role_key === ROLE_KEY);
 
       setPlaybooks(playbookData ?? []);
-      setRuns(operatorRuns);
+      setRuns(roleRuns);
       setApprovals(approvalsData ?? []);
 
       if (!selectedPlaybookId && Array.isArray(playbookData) && playbookData.length) {
         setSelectedPlaybookId(playbookData[0].id);
       }
-      if (!selectedRunId && operatorRuns.length) {
-        setSelectedRunId(operatorRuns[0].id);
+      if (!selectedRunId && roleRuns.length) {
+        setSelectedRunId(roleRuns[0].id);
       }
     } catch {
       setWorkflowStatus("读取自动化任务失败。");
@@ -138,7 +142,7 @@ export default function OperatorPage() {
   async function savePrompt() {
     setIsBusy(true);
     try {
-      const response = await fetch("/api/operator/prompt", {
+      const response = await fetch(`/api/agents/${ROLE_KEY}/prompt`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
@@ -164,12 +168,12 @@ export default function OperatorPage() {
     setIsBusy(true);
     try {
       const inputs = JSON.parse(toolInputs);
-      const response = await fetch(`/api/agents/operator/tools/${selectedToolId}/execute`, {
+      const response = await fetch(`/api/agents/${ROLE_KEY}/tools/${selectedToolId}/execute`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           inputs,
-          user: "operator-employee-page",
+          user: "product-manager-employee-page",
         }),
       });
       const data = await response.json();
@@ -337,35 +341,35 @@ export default function OperatorPage() {
         </Link>
         <div className="employeeHeroGrid">
           <div>
-            <p className="eyebrow">Operator Employee</p>
-            <h1>运营员工管理</h1>
-            <p className="lede">管理运营员工提示词、授权工具、运行实例和节点执行日志。</p>
+            <p className="eyebrow">{ROLE_ENGLISH_NAME}</p>
+            <h1>{ROLE_NAME}管理</h1>
+            <p className="lede">管理产品经理提示词、授权工具、需求任务、运行实例和节点执行日志。</p>
           </div>
           <div className="statusPanel">
-            <ShieldCheck aria-hidden="true" />
+            <BriefcaseBusiness aria-hidden="true" />
             <span>{workflowStatus}</span>
           </div>
         </div>
       </section>
 
-      <section className="settingsPanel" aria-label="运营提示词配置">
+      <section className="settingsPanel" aria-label="产品经理提示词配置">
         <div className="editorPanel">
           <div className="panelHeader">
             <FileText aria-hidden="true" />
-            <h2>整理提示词</h2>
+            <h2>需求整理提示词</h2>
             <button type="button" onClick={savePrompt} disabled={isBusy} title="保存提示词">
               <Save aria-hidden="true" />
               保存
             </button>
           </div>
-          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} aria-label="运营整理提示词" />
+          <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} aria-label="产品经理需求整理提示词" />
         </div>
       </section>
 
-      <section className="settingsPanel" aria-label="运营授权工具">
+      <section className="settingsPanel" aria-label="产品经理授权工具">
         <div className="panelHeader">
           <Wrench aria-hidden="true" />
-          <h2>运营授权工具</h2>
+          <h2>产品经理授权工具</h2>
           <button type="button" onClick={executeTool} disabled={isBusy || !selectedToolId}>
             <Play aria-hidden="true" />
             测试运行
@@ -399,7 +403,7 @@ export default function OperatorPage() {
       <section className="settingsPanel">
         <div className="panelHeader">
           <ShieldCheck aria-hidden="true" />
-          <h2>当前运营任务</h2>
+          <h2>当前产品任务</h2>
           <div className="toolActions">
             <button type="button" onClick={refreshAutomation} disabled={isBusy}>
               <RefreshCcw aria-hidden="true" />
@@ -411,7 +415,7 @@ export default function OperatorPage() {
         <div className="operatorConsole automationConsole">
           <div className="publishPanel">
             <div className="panelHeader">
-              <Megaphone aria-hidden="true" />
+              <BriefcaseBusiness aria-hidden="true" />
               <h2>任务列表</h2>
               <button type="button" onClick={triggerPlaybook} disabled={isBusy || !selectedPlaybookId}>
                 <Play aria-hidden="true" />
@@ -455,7 +459,7 @@ export default function OperatorPage() {
                   </article>
                 ))
               ) : (
-                <p className="toolEmpty">当前运营角色还没有长期任务。一次性任务会直接进入运行实例。</p>
+                <p className="toolEmpty">当前产品经理角色还没有长期任务。一次性任务会直接进入运行实例。</p>
               )}
             </div>
           </div>

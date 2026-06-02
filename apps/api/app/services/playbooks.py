@@ -230,7 +230,7 @@ def create_playbook(payload: PlaybookCreateRequest) -> Playbook:
     playbook = Playbook(
         id=f"playbook_{uuid4().hex[:12]}",
         role_key=payload.role_key,
-        name=parsed.name,
+        name=append_random_suffix(parsed.name),
         natural_language=payload.natural_language,
         trigger=parsed.trigger,
         collaboration=parsed.collaboration,
@@ -239,7 +239,18 @@ def create_playbook(payload: PlaybookCreateRequest) -> Playbook:
     )
     registry.playbooks.append(playbook)
     write_playbook_registry(registry)
+    if is_one_shot_playbook(playbook):
+        create_run_from_playbook(playbook, scheduled_for=get_initial_scheduled_for(playbook))
+        remove_playbook_definition(playbook.id)
     return playbook
+
+
+def append_random_suffix(name: str) -> str:
+    return f"{name}-{uuid4().hex[:6]}"
+
+
+def is_one_shot_playbook(playbook: Playbook) -> bool:
+    return playbook.trigger.type in {"immediate", "scheduled"}
 
 
 def list_playbooks(role_key: str | None = None) -> list[Playbook]:
@@ -276,11 +287,26 @@ def delete_playbook(playbook_id: str) -> Playbook:
     return playbook
 
 
+def remove_playbook_definition(playbook_id: str) -> Playbook | None:
+    registry = read_playbook_registry()
+    playbook = next((item for item in registry.playbooks if item.id == playbook_id), None)
+    if playbook is None:
+        return None
+
+    registry.playbooks = [item for item in registry.playbooks if item.id != playbook_id]
+    write_playbook_registry(registry)
+    return playbook
+
+
 def trigger_playbook(playbook_id: str, scheduled_for: str | None = None) -> PublicPlaybookRun:
     playbook = get_playbook(playbook_id)
     if playbook is None:
         raise HTTPException(status_code=404, detail="Playbook not found")
 
+    return create_run_from_playbook(playbook, scheduled_for=scheduled_for)
+
+
+def create_run_from_playbook(playbook: Playbook, scheduled_for: str | None = None) -> PublicPlaybookRun:
     run_registry = read_run_registry()
     run = PlaybookRun(
         id=f"run_{uuid4().hex[:12]}",
@@ -289,7 +315,7 @@ def trigger_playbook(playbook_id: str, scheduled_for: str | None = None) -> Publ
         owner_role_key=playbook.collaboration.owner_role_key,
         participant_role_keys=playbook.collaboration.participant_role_keys,
         status="pending",
-        scheduled_for=scheduled_for or playbook.trigger.run_at or _today_with_time(playbook.trigger.time),
+        scheduled_for=scheduled_for or get_initial_scheduled_for(playbook),
         steps=[
             PlaybookRunStep(
                 id=step.id,
@@ -311,6 +337,10 @@ def trigger_playbook(playbook_id: str, scheduled_for: str | None = None) -> Publ
             for step in playbook.steps
         ],
         current_step_id=playbook.steps[0].id if playbook.steps else None,
+        shared_context={
+            "playbook_name": playbook.name,
+            "natural_language": playbook.natural_language,
+        },
         updated_at=_now(),
     )
     run_registry.runs.append(run)
@@ -318,11 +348,32 @@ def trigger_playbook(playbook_id: str, scheduled_for: str | None = None) -> Publ
     return to_public_run(run)
 
 
+def get_initial_scheduled_for(playbook: Playbook) -> str:
+    if playbook.trigger.type == "immediate":
+        return _now()
+    return playbook.trigger.run_at or _today_with_time(playbook.trigger.time)
+
+
 def list_runs(playbook_id: str | None = None) -> list[PublicPlaybookRun]:
     runs = read_run_registry().runs
     if playbook_id:
       runs = [item for item in runs if item.playbook_id == playbook_id]
     return [to_public_run(run) for run in runs]
+
+
+def delete_run(run_id: str) -> PublicPlaybookRun:
+    registry = read_run_registry()
+    run = next((item for item in registry.runs if item.id == run_id), None)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    registry.runs = [item for item in registry.runs if item.id != run_id]
+    write_run_registry(registry)
+
+    approval_registry = read_approval_registry()
+    approval_registry.approvals = [item for item in approval_registry.approvals if item.run_id != run_id]
+    write_approval_registry(approval_registry)
+    return to_public_run(run)
 
 
 def list_approvals(role_key: str | None = None) -> list[ApprovalRequest]:
@@ -454,8 +505,22 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
     run.updated_at = _now()
     write_run_registry(run_registry)
     write_approval_registry(approval_registry)
+    cleanup_one_shot_playbook_after_run(run)
     approvals = [item for item in approval_registry.approvals if item.run_id == run.id]
     return PlaybookExecuteResponse(run=to_public_run(run), approvals=approvals)
+
+
+def cleanup_one_shot_playbook_after_run(run: PlaybookRun) -> None:
+    if run.status not in {"completed", "cancelled"}:
+        return
+
+    playbook = get_playbook(run.playbook_id)
+    if playbook is None:
+        return
+    if playbook.trigger.type not in {"immediate", "scheduled"}:
+        return
+
+    remove_playbook_definition(playbook.id)
 
 
 def resolve_approval(approval_id: str, approved: bool) -> ApprovalRequest:
