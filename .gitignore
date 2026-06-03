@@ -1,6 +1,7 @@
 # Local environment and secrets
 .env
 .env.*
+video/
 !.env.example
 .workflow-chat/
 
