@@ -7,6 +7,7 @@ from app.schemas.settings import (
     NotificationSettings,
     PublicNotificationSettings,
     PublicTelegramNotificationConfig,
+    PublicWeixinBotNotificationConfig,
 )
 from app.services.prompt_config import get_config_dir
 
@@ -22,7 +23,7 @@ def read_notification_settings() -> NotificationSettings:
         write_notification_settings(settings)
         return settings
 
-    data = json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
     return _normalize_notification_settings(NotificationSettings(**data))
 
 
@@ -47,6 +48,10 @@ def update_notification_settings(payload: NotificationSettings) -> PublicNotific
         payload.telegram.bot_token = existing.telegram.bot_token
     if not payload.telegram.webhook_secret_token:
         payload.telegram.webhook_secret_token = existing.telegram.webhook_secret_token
+    if not payload.weixin_bot.user_id:
+        payload.weixin_bot.user_id = existing.weixin_bot.user_id
+    if not payload.weixin_bot.target_user_id:
+        payload.weixin_bot.target_user_id = existing.weixin_bot.target_user_id
 
     saved = write_notification_settings(payload)
     return to_public_notification_settings(saved)
@@ -65,19 +70,45 @@ def to_public_notification_settings(settings: NotificationSettings) -> PublicNot
             has_webhook_secret_token=bool(settings.telegram.webhook_secret_token),
             disable_web_page_preview=settings.telegram.disable_web_page_preview,
         ),
+        weixin_bot=PublicWeixinBotNotificationConfig(
+            enabled=settings.weixin_bot.enabled,
+            user_id=settings.weixin_bot.user_id,
+            target_user_id=settings.weixin_bot.target_user_id,
+            message_prefix=settings.weixin_bot.message_prefix,
+            timeout_seconds=settings.weixin_bot.timeout_seconds,
+        ),
         updated_at=settings.updated_at,
     )
 
 
 def _normalize_notification_settings(settings: NotificationSettings) -> NotificationSettings:
-    if settings.active_channel not in {NotificationChannel.NONE, NotificationChannel.TELEGRAM}:
+    if settings.active_channel not in {NotificationChannel.NONE, NotificationChannel.TELEGRAM, NotificationChannel.WEIXIN_BOT}:
         settings.active_channel = NotificationChannel.NONE
 
     settings.telegram.enabled = settings.active_channel == NotificationChannel.TELEGRAM
+    settings.weixin_bot.enabled = settings.active_channel == NotificationChannel.WEIXIN_BOT
     if settings.active_channel == NotificationChannel.TELEGRAM and not settings.telegram.enabled:
+        settings.active_channel = NotificationChannel.NONE
+    if settings.active_channel == NotificationChannel.WEIXIN_BOT and not settings.weixin_bot.enabled:
         settings.active_channel = NotificationChannel.NONE
     if not settings.telegram.api_base_url:
         settings.telegram.api_base_url = "https://api.telegram.org"
     if not settings.telegram.parse_mode:
         settings.telegram.parse_mode = "HTML"
+    if not settings.weixin_bot.message_prefix:
+        settings.weixin_bot.message_prefix = "Workflow Chat"
+    if settings.weixin_bot.timeout_seconds <= 0:
+        settings.weixin_bot.timeout_seconds = 8
     return settings
+
+
+def save_weixin_bot_user_id(user_id: str) -> NotificationSettings:
+    settings = read_notification_settings()
+    settings.weixin_bot.user_id = user_id
+    return write_notification_settings(settings)
+
+
+def save_weixin_bot_target_user_id(target_user_id: str) -> NotificationSettings:
+    settings = read_notification_settings()
+    settings.weixin_bot.target_user_id = target_user_id
+    return write_notification_settings(settings)

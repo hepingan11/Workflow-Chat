@@ -39,6 +39,25 @@ class ModelTestResponse(BaseModel):
     detail: dict = Field(default_factory=dict)
 
 
+class MemoryStorageSettings(BaseModel):
+    database_url: str = ""
+    markdown_dir: str = ".workflow-chat/memories"
+    updated_at: str | None = None
+
+
+class PublicMemoryStorageSettings(BaseModel):
+    database_url_preview: str = ""
+    has_database_url: bool = False
+    markdown_dir: str = ".workflow-chat/memories"
+    updated_at: str | None = None
+
+
+class MemoryStorageTestResponse(BaseModel):
+    ok: bool
+    message: str
+    detail: dict = Field(default_factory=dict)
+
+
 class PublicAiModelConfig(BaseModel):
     format: str = AiServiceFormat.OPENAI
     base_url: str = ""
@@ -69,6 +88,7 @@ class BossSettings(BaseModel):
 class NotificationChannel:
     NONE = "none"
     TELEGRAM = "telegram"
+    WEIXIN_BOT = "weixin_bot"
 
 
 class TelegramNotificationConfig(BaseModel):
@@ -82,9 +102,18 @@ class TelegramNotificationConfig(BaseModel):
     disable_web_page_preview: bool = True
 
 
+class WeixinBotNotificationConfig(BaseModel):
+    enabled: bool = False
+    user_id: str = ""
+    target_user_id: str = ""
+    message_prefix: str = "Workflow Chat"
+    timeout_seconds: int = 8
+
+
 class NotificationSettings(BaseModel):
     active_channel: str = NotificationChannel.NONE
     telegram: TelegramNotificationConfig = Field(default_factory=TelegramNotificationConfig)
+    weixin_bot: WeixinBotNotificationConfig = Field(default_factory=WeixinBotNotificationConfig)
     updated_at: str | None = None
 
 
@@ -99,9 +128,18 @@ class PublicTelegramNotificationConfig(BaseModel):
     disable_web_page_preview: bool = True
 
 
+class PublicWeixinBotNotificationConfig(BaseModel):
+    enabled: bool = False
+    user_id: str = ""
+    target_user_id: str = ""
+    message_prefix: str = "Workflow Chat"
+    timeout_seconds: int = 8
+
+
 class PublicNotificationSettings(BaseModel):
     active_channel: str = NotificationChannel.NONE
     telegram: PublicTelegramNotificationConfig = Field(default_factory=PublicTelegramNotificationConfig)
+    weixin_bot: PublicWeixinBotNotificationConfig = Field(default_factory=PublicWeixinBotNotificationConfig)
     updated_at: str | None = None
 
 
@@ -109,6 +147,26 @@ class NotificationTestResponse(BaseModel):
     ok: bool
     channel: str = NotificationChannel.TELEGRAM
     message: str
+    detail: dict = Field(default_factory=dict)
+
+
+class WeixinBotLoginStartResponse(BaseModel):
+    ok: bool
+    session_id: str = ""
+    message: str = ""
+    detail: dict = Field(default_factory=dict)
+
+
+class WeixinBotLoginStatusResponse(BaseModel):
+    ok: bool
+    session_id: str = ""
+    status: str = ""
+    qr_status: str = ""
+    qr_data_url: str = ""
+    qr_content: str = ""
+    user_id: str = ""
+    message: str = ""
+    error: str = ""
     detail: dict = Field(default_factory=dict)
 
 

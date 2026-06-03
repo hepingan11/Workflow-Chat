@@ -122,10 +122,39 @@ copy + materials -> prompt-controlled normalization -> workflow API payload -> D
 - 模型名称
 - 按职位覆盖模型配置
 
+通知推送当前支持：
+
+- Telegram Bot API
+- 微信 Bot，统一使用 [integrations/weixinProxy](integrations/weixinProxy/README.md)
+
+### 角色长期记忆
+
+每个数字员工拥有独立长期记忆。当前采用 `PostgreSQL + Markdown` 双层设计：
+
+- PostgreSQL 保存结构化索引、任务记录、记忆类型、来源、标签和重要度
+- Markdown 保存可读、可人工编辑的长期经验文档
+- 工具节点执行前会把该角色的长期记忆注入到 `long_term_memory`
+- 任务完成、取消或失败后会自动复盘，并提炼为事件经验和避坑点
+
+记忆类型：
+
+- `semantic`：知识类记忆
+- `episodic`：事件类记忆
+- `procedural`：流程类记忆
+- `preference`：偏好类记忆
+- `pitfall`：避坑点
+
+相关 API：
+
+- `POST /agents/memory-store/init`：初始化 PostgreSQL 记忆表
+- `GET /agents/{agent_key}/memories?q=关键词`：检索角色记忆
+- `POST /agents/{agent_key}/memories`：手动写入角色记忆
+
 ## Web Console
 
 - `/`：数字员工入口面板
 - `/employees/operator`：运营员工管理
+- `/employees/product_manager`：产品经理管理
 - `/employees/{key}`：其他员工管理占位页
 - `/settings/services`：模型服务配置
 - `/settings/tools`：工具配置
@@ -160,6 +189,27 @@ npm install
 npm run dev
 ```
 
+Weixin Bot:
+
+```powershell
+cd integrations/weixinProxy
+npm install
+npm run login
+npm run listen
+npm run send -- <user_id> <text>
+npm run repl
+```
+
+后端会在需要微信登录、发送或监听时自动检测 `integrations/weixinProxy` 的本地依赖；如果未安装，会在该目录执行 `npm install`。`/settings/services` 中提供网页扫码入口，扫码成功后会保存 `userId`。业务消息发送会通过 `integrations/weixinProxy/src/workflow-chat-send-text.js` 读取 UTF-8 文本文件发送，避免多行消息被命令行参数截断。
+
+微信业务推送生效前需要完成：
+
+1. 在 `/settings/services` 选择微信 Bot 并扫码登录。
+2. 点击“启动监听”，让 `integrations/weixinProxy` 接收消息。
+3. 用接收通知的微信号给 Bot 发一条消息，生成该会话的 `context_token`。
+4. 点击“同步目标”，保存真正的推送目标 `target_user_id`。
+5. 点击“测试发送”，确认后续 `message_push` 和 `human_approval` 节点可以真正推送到微信。
+
 ## 本地配置
 
 运行时配置默认保存在：
@@ -169,3 +219,12 @@ npm run dev
 ```
 
 该目录会被 `.gitignore` 忽略，适合保存本地模型配置、工具配置、Playbook、运行记录和审批记录。
+
+长期记忆配置：
+
+```powershell
+$env:DATABASE_URL="postgresql://postgres:your-password@host:port/postgres"
+$env:MEMORY_MARKDOWN_DIR=".workflow-chat/memories"
+```
+
+如果暂时不配置 `DATABASE_URL`，系统仍会写入 Markdown 记忆；配置 PostgreSQL 后会同时写入结构化表。

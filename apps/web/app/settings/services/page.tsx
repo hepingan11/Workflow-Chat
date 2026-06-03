@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Bell, ChevronDown, Save, Send, Settings, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Bell, ChevronDown, Database, Save, Send, Settings, SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { employees } from "../../employees";
@@ -59,7 +59,7 @@ type ModelSettingsForm = {
   role_models: Record<string, RoleModelConfig>;
 };
 
-type NotificationChannel = "none" | "telegram";
+type NotificationChannel = "none" | "telegram" | "weixin_bot";
 
 type NotificationSettingsForm = {
   active_channel: NotificationChannel;
@@ -73,11 +73,41 @@ type NotificationSettingsForm = {
     webhook_secret_token: string;
     disable_web_page_preview: boolean;
   };
+  weixin_bot: {
+    enabled: boolean;
+    user_id: string;
+    target_user_id: string;
+    message_prefix: string;
+    timeout_seconds: number;
+  };
 };
 
 type BossSettingsForm = {
   preferred_name: string;
   role_profile: string;
+};
+
+type MemoryStorageForm = {
+  database_url: string;
+  database_url_preview: string;
+  has_database_url: boolean;
+  markdown_dir: string;
+};
+
+type ToastState = {
+  message: string;
+  tone: "info" | "success" | "error";
+};
+
+type WeixinLoginState = {
+  open: boolean;
+  sessionId: string;
+  status: string;
+  qrStatus: string;
+  qrDataUrl: string;
+  userId: string;
+  message: string;
+  error: string;
 };
 
 const emptyRoleConfig: RoleModelConfig = {
@@ -113,6 +143,13 @@ function createEmptyNotificationForm(): NotificationSettingsForm {
       webhook_secret_token: "",
       disable_web_page_preview: true,
     },
+    weixin_bot: {
+      enabled: false,
+      user_id: "",
+      target_user_id: "",
+      message_prefix: "Workflow Chat",
+      timeout_seconds: 8,
+    },
   };
 }
 
@@ -120,9 +157,83 @@ export default function ServicesSettingsPage() {
   const [form, setForm] = useState<ModelSettingsForm>(createEmptyForm);
   const [bossForm, setBossForm] = useState<BossSettingsForm>({ preferred_name: "", role_profile: "" });
   const [notificationForm, setNotificationForm] = useState<NotificationSettingsForm>(createEmptyNotificationForm);
+  const [memoryForm, setMemoryForm] = useState<MemoryStorageForm>({
+    database_url: "",
+    database_url_preview: "",
+    has_database_url: false,
+    markdown_dir: ".workflow-chat/memories",
+  });
   const [status, setStatus] = useState("等待配置");
+  const [toast, setToast] = useState<ToastState | null>(null);
+  const [weixinLogin, setWeixinLogin] = useState<WeixinLoginState>({
+    open: false,
+    sessionId: "",
+    status: "",
+    qrStatus: "",
+    qrDataUrl: "",
+    userId: "",
+    message: "",
+    error: "",
+  });
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+    const timer = window.setTimeout(() => setToast(null), toast.tone === "error" ? 5200 : 3600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!weixinLogin.open || !weixinLogin.sessionId || weixinLogin.status === "confirmed" || weixinLogin.status === "failed") {
+      return;
+    }
+
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/settings/notification-config/weixin-bot-login/${weixinLogin.sessionId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(notificationForm),
+        });
+        const data = await response.json();
+        const errorMessage = !response.ok || !data.ok ? getApiErrorMessage(data, "读取微信登录状态失败") : "";
+        setWeixinLogin((current) => ({
+          ...current,
+          status: data.status ?? current.status,
+          qrStatus: data.qr_status ?? current.qrStatus,
+          qrDataUrl: data.qr_data_url ?? current.qrDataUrl,
+          userId: data.user_id ?? current.userId,
+          message: data.message ?? current.message,
+          error: errorMessage || data.error || data.detail?.error_detail?.message || "",
+        }));
+        if (data.user_id) {
+          setNotificationForm((current) => ({
+            ...current,
+            weixin_bot: {
+              ...current.weixin_bot,
+              user_id: data.user_id,
+            },
+          }));
+        }
+        if (data.status === "confirmed") {
+          notify("微信 Bot 登录成功", "success");
+        }
+        if (errorMessage || data.status === "failed") {
+          notify(errorMessage || data.error || data.detail?.error_detail?.message || "微信 Bot 登录失败", "error");
+        }
+      } catch (error) {
+        setWeixinLogin((current) => ({
+          ...current,
+          error: error instanceof Error ? error.message : "读取微信登录状态失败",
+        }));
+      }
+    }, 1500);
+
+    return () => window.clearInterval(timer);
+  }, [notificationForm, weixinLogin.open, weixinLogin.sessionId, weixinLogin.status]);
 
   useEffect(() => {
     fetch("/api/settings/model-config")
@@ -170,6 +281,13 @@ export default function ServicesSettingsPage() {
             webhook_secret_token: "",
             disable_web_page_preview: data.telegram?.disable_web_page_preview ?? true,
           },
+          weixin_bot: {
+            enabled: data.active_channel === "weixin_bot",
+            user_id: data.weixin_bot?.user_id ?? "",
+            target_user_id: data.weixin_bot?.target_user_id ?? "",
+            message_prefix: data.weixin_bot?.message_prefix ?? "Workflow Chat",
+            timeout_seconds: data.weixin_bot?.timeout_seconds ?? 8,
+          },
         });
       })
       .catch(() => setStatus("读取通知配置失败"));
@@ -183,6 +301,18 @@ export default function ServicesSettingsPage() {
         });
       })
       .catch(() => setStatus("读取老板设定失败"));
+
+    fetch("/api/settings/memory-storage-config")
+      .then((response) => response.json())
+      .then((data) => {
+        setMemoryForm({
+          database_url: "",
+          database_url_preview: data.database_url_preview ?? "",
+          has_database_url: data.has_database_url ?? false,
+          markdown_dir: data.markdown_dir ?? ".workflow-chat/memories",
+        });
+      })
+      .catch(() => setStatus("读取长期记忆配置失败"));
   }, []);
 
   function updateGlobal(field: keyof ModelSettingsForm["global_model"], value: string) {
@@ -216,6 +346,10 @@ export default function ServicesSettingsPage() {
         ...current.telegram,
         enabled: channel === "telegram",
       },
+      weixin_bot: {
+        ...current.weixin_bot,
+        enabled: channel === "weixin_bot",
+      },
     }));
   }
 
@@ -236,6 +370,61 @@ export default function ServicesSettingsPage() {
     }));
   }
 
+  function updateWeixinBot(field: keyof NotificationSettingsForm["weixin_bot"], value: string | number | boolean) {
+    setNotificationForm((current) => ({
+      ...current,
+      weixin_bot: {
+        ...current.weixin_bot,
+        [field]: value,
+      },
+    }));
+  }
+
+  function updateMemory(field: keyof MemoryStorageForm, value: string) {
+    setMemoryForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function notify(message: string, tone: ToastState["tone"] = "info") {
+    setToast({ message, tone });
+  }
+
+  function getApiErrorMessage(data: unknown, fallback: string) {
+    if (!data || typeof data !== "object") {
+      return fallback;
+    }
+
+    const payload = data as {
+      message?: unknown;
+      detail?: {
+        error?: unknown;
+        response?: {
+          message?: unknown;
+          stdout?: unknown;
+          stderr?: unknown;
+        };
+        url?: unknown;
+        status_code?: unknown;
+        response_preview?: unknown;
+      };
+    };
+    const message = typeof payload.message === "string" && payload.message ? payload.message : fallback;
+    const detail = payload.detail ?? {};
+    const parts = [
+      typeof detail.status_code === "number" ? `HTTP ${detail.status_code}` : "",
+      typeof detail.url === "string" && detail.url ? `URL: ${detail.url}` : "",
+      typeof detail.response_preview === "string" && detail.response_preview ? `返回: ${detail.response_preview}` : "",
+      typeof detail.error === "string" && detail.error ? `错误: ${detail.error}` : "",
+      typeof detail.response?.message === "string" && detail.response.message ? detail.response.message : "",
+      typeof detail.response?.stderr === "string" && detail.response.stderr ? `stderr: ${detail.response.stderr}` : "",
+      typeof detail.response?.stdout === "string" && detail.response.stdout ? `stdout: ${detail.response.stdout}` : "",
+    ].filter(Boolean);
+
+    return parts.length ? `${message} ${parts.join(" | ")}` : message;
+  }
+
   async function saveSettings() {
     setIsBusy(true);
     try {
@@ -248,6 +437,7 @@ export default function ServicesSettingsPage() {
         throw new Error("save failed");
       }
       setStatus("服务配置已保存");
+      notify("服务配置已保存", "success");
       setForm((current) => ({
         ...current,
         global_model: {
@@ -266,6 +456,7 @@ export default function ServicesSettingsPage() {
       }));
     } catch {
       setStatus("保存服务配置失败");
+      notify("保存服务配置失败", "error");
     } finally {
       setIsBusy(false);
     }
@@ -273,7 +464,7 @@ export default function ServicesSettingsPage() {
 
   async function testModelConnection() {
     setIsBusy(true);
-    setStatus("正在测试 AI 接口...");
+    notify("正在测试 AI 接口...", "info");
     try {
       const response = await fetch("/api/settings/model-config/test", {
         method: "POST",
@@ -287,9 +478,9 @@ export default function ServicesSettingsPage() {
         const extra = data.detail?.response_preview || data.detail?.error || "";
         throw new Error(extra ? `${data.message} ${extra}` : data.message ?? "模型接口测试失败");
       }
-      setStatus(data.detail?.reply ? `${data.message} 返回：${data.detail.reply}` : data.message);
+      notify(data.detail?.reply ? `${data.message} 返回：${data.detail.reply}` : data.message, "success");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "模型接口测试失败");
+      notify(error instanceof Error ? error.message : "模型接口测试失败", "error");
     } finally {
       setIsBusy(false);
     }
@@ -307,8 +498,10 @@ export default function ServicesSettingsPage() {
         throw new Error("save failed");
       }
       setStatus("老板设定已保存");
+      notify("老板设定已保存", "success");
     } catch {
       setStatus("保存老板设定失败");
+      notify("保存老板设定失败", "error");
     } finally {
       setIsBusy(false);
     }
@@ -326,6 +519,7 @@ export default function ServicesSettingsPage() {
         throw new Error("save failed");
       }
       setStatus("通知推送配置已保存");
+      notify("通知推送配置已保存", "success");
       setNotificationForm((current) => ({
         ...current,
         telegram: {
@@ -336,6 +530,7 @@ export default function ServicesSettingsPage() {
       }));
     } catch {
       setStatus("保存通知推送配置失败");
+      notify("保存通知推送配置失败", "error");
     } finally {
       setIsBusy(false);
     }
@@ -343,7 +538,7 @@ export default function ServicesSettingsPage() {
 
   async function testTelegramConnection() {
     setIsBusy(true);
-    setStatus("正在发送 Telegram 测试消息...");
+    notify("正在发送 Telegram 测试消息...", "info");
     try {
       const response = await fetch("/api/settings/notification-config/test-telegram", {
         method: "POST",
@@ -354,9 +549,175 @@ export default function ServicesSettingsPage() {
       if (!response.ok || !data.ok) {
         throw new Error(data.message ?? "Telegram 测试失败");
       }
-      setStatus(data.message ?? "Telegram 测试消息已发送");
+      notify(data.message ?? "Telegram 测试消息已发送", "success");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Telegram 测试失败");
+      notify(error instanceof Error ? error.message : "Telegram 测试失败", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function testWeixinBotConnection() {
+    setIsBusy(true);
+    notify("正在通过 integrations/weixinProxy 发送微信测试消息...", "info");
+    try {
+      const response = await fetch("/api/settings/notification-config/test-weixin-bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notificationForm),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(getApiErrorMessage(data, "微信 Bot 测试失败"));
+      }
+      notify(data.message ?? "微信 Bot 测试消息已发送", "success");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "微信 Bot 测试失败", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function startWeixinBotListen() {
+    setIsBusy(true);
+    notify("正在启动 integrations/weixinProxy listen...", "info");
+    try {
+      const response = await fetch("/api/settings/notification-config/weixin-bot-listen/start", {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(getApiErrorMessage(data, "微信 Bot 监听启动失败"));
+      }
+      notify(data.message ?? "weixinProxy listen 已启动", "success");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "微信 Bot 监听启动失败", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function syncWeixinBotTarget() {
+    setIsBusy(true);
+    notify("正在同步微信推送目标...", "info");
+    try {
+      const response = await fetch("/api/settings/notification-config/weixin-bot-target/sync", {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(getApiErrorMessage(data, "微信推送目标同步失败"));
+      }
+      const targetUserId = data.detail?.target_user_id ?? "";
+      if (targetUserId) {
+        setNotificationForm((current) => ({
+          ...current,
+          weixin_bot: {
+            ...current.weixin_bot,
+            target_user_id: targetUserId,
+          },
+        }));
+      }
+      notify(data.message ?? "微信推送目标已同步", "success");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "微信推送目标同步失败", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function startWeixinBotLogin() {
+    setIsBusy(true);
+    notify("正在生成微信登录二维码...", "info");
+    setWeixinLogin({
+      open: true,
+      sessionId: "",
+      status: "pending",
+      qrStatus: "",
+      qrDataUrl: "",
+      userId: "",
+      message: "正在生成二维码...",
+      error: "",
+    });
+    try {
+      const response = await fetch("/api/settings/notification-config/weixin-bot-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(notificationForm),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(getApiErrorMessage(data, "微信登录二维码生成失败"));
+      }
+      setWeixinLogin((current) => ({
+        ...current,
+        sessionId: data.session_id,
+        status: data.detail?.status ?? "running",
+        message: data.message || "二维码会在稍后显示，请准备扫码。",
+      }));
+    } catch (error) {
+      setWeixinLogin((current) => ({
+        ...current,
+        status: "failed",
+        error: error instanceof Error ? error.message : "微信登录二维码生成失败",
+        message: "微信登录二维码生成失败",
+      }));
+      notify(error instanceof Error ? error.message : "微信登录二维码生成失败", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function saveMemoryStorageSettings() {
+    setIsBusy(true);
+    try {
+      const response = await fetch("/api/settings/memory-storage-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          database_url: memoryForm.database_url,
+          markdown_dir: memoryForm.markdown_dir,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail ?? "save failed");
+      }
+      setMemoryForm({
+        database_url: "",
+        database_url_preview: data.database_url_preview ?? "",
+        has_database_url: data.has_database_url ?? false,
+        markdown_dir: data.markdown_dir ?? ".workflow-chat/memories",
+      });
+      setStatus("长期记忆配置已保存");
+      notify("长期记忆配置已保存", "success");
+    } catch {
+      setStatus("保存长期记忆配置失败");
+      notify("保存长期记忆配置失败", "error");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function testMemoryStorageConnection() {
+    setIsBusy(true);
+    notify("正在测试 PostgreSQL 记忆库...", "info");
+    try {
+      const response = await fetch("/api/settings/memory-storage-config/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          database_url: memoryForm.database_url,
+          markdown_dir: memoryForm.markdown_dir,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.message ?? "PostgreSQL 测试失败");
+      }
+      notify(data.message ?? "PostgreSQL 记忆库连接成功", "success");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "PostgreSQL 测试失败", "error");
     } finally {
       setIsBusy(false);
     }
@@ -364,6 +725,13 @@ export default function ServicesSettingsPage() {
 
   return (
     <main className="shell">
+      {toast ? (
+        <div className="settingsToast" data-tone={toast.tone} role="status" aria-live="polite">
+          <span>{toast.tone === "success" ? "完成" : toast.tone === "error" ? "出错" : "处理中"}</span>
+          <p>{toast.message}</p>
+        </div>
+      ) : null}
+
       <section className="employeeHero">
         <Link className="backLink" href="/">
           <ArrowLeft aria-hidden="true" />
@@ -549,6 +917,57 @@ export default function ServicesSettingsPage() {
         </div>
       </section>
 
+      <section className="settingsPanel" aria-label="长期记忆数据库配置">
+        <div className="panelHeader">
+          <Database aria-hidden="true" />
+          <h2>长期记忆数据库</h2>
+          <button type="button" onClick={saveMemoryStorageSettings} disabled={isBusy} title="保存长期记忆配置">
+            <Save aria-hidden="true" />
+            保存记忆配置
+          </button>
+          <button type="button" onClick={testMemoryStorageConnection} disabled={isBusy} title="测试 PostgreSQL 记忆库">
+            <Send aria-hidden="true" />
+            测试连接
+          </button>
+        </div>
+        <p className="settingsIntro">
+          每个数字员工的长期记忆会写入 PostgreSQL 结构化索引，同时归档为 Markdown，方便人工查看和编辑。
+        </p>
+        <div className="settingsGrid bossSettingsGrid">
+          <label className="wideField">
+            PostgreSQL Database URL
+            <input
+              value={memoryForm.database_url}
+              onChange={(event) => updateMemory("database_url", event.target.value)}
+              placeholder={
+                memoryForm.has_database_url
+                  ? `留空表示保留已保存连接：${memoryForm.database_url_preview}`
+                  : "postgresql://postgres:password@host:port/postgres"
+              }
+              type="password"
+            />
+            <small>
+              推荐使用 `postgresql://user:password@host:port/database`。保存后页面只显示脱敏预览。
+            </small>
+          </label>
+          <label>
+            Markdown 记忆目录
+            <input
+              value={memoryForm.markdown_dir}
+              onChange={(event) => updateMemory("markdown_dir", event.target.value)}
+              placeholder=".workflow-chat/memories"
+            />
+            <small>不配置 PostgreSQL 时，也会继续写入 Markdown 记忆。</small>
+          </label>
+          <div className="settingsHintCard">
+            保存后任务完成会自动复盘：
+            <code>agent_task_memories</code>
+            <code>agent_memories</code>
+            <code>.md</code>
+          </div>
+        </div>
+      </section>
+
       <section className="settingsPanel" aria-label="通知推送配置">
         <div className="panelHeader">
           <Bell aria-hidden="true" />
@@ -561,6 +980,24 @@ export default function ServicesSettingsPage() {
             <button type="button" onClick={testTelegramConnection} disabled={isBusy} title="发送 Telegram 测试消息">
               <Send aria-hidden="true" />
               测试连接
+            </button>
+          ) : null}
+          {notificationForm.active_channel === "weixin_bot" ? (
+            <button type="button" onClick={testWeixinBotConnection} disabled={isBusy} title="通过 integrations/weixinProxy 发送测试消息">
+              <Send aria-hidden="true" />
+              测试发送
+            </button>
+          ) : null}
+          {notificationForm.active_channel === "weixin_bot" ? (
+            <button type="button" onClick={startWeixinBotListen} disabled={isBusy} title="启动 integrations/weixinProxy listen 接收消息">
+              <Send aria-hidden="true" />
+              启动监听
+            </button>
+          ) : null}
+          {notificationForm.active_channel === "weixin_bot" ? (
+            <button type="button" onClick={syncWeixinBotTarget} disabled={isBusy} title="从 listen 收到的会话中同步推送目标">
+              <Send aria-hidden="true" />
+              同步目标
             </button>
           ) : null}
         </div>
@@ -592,6 +1029,18 @@ export default function ServicesSettingsPage() {
             <span>
               <strong>Telegram</strong>
               <small>通过 Telegram Bot API 发送审批确认消息。</small>
+            </span>
+          </label>
+          <label className="notificationChannelCard">
+            <input
+              checked={notificationForm.active_channel === "weixin_bot"}
+              name="notification-channel"
+              onChange={() => updateNotificationChannel("weixin_bot")}
+              type="radio"
+            />
+            <span>
+              <strong>微信 Bot</strong>
+              <small>统一使用 integrations/weixinProxy 登录、监听和发送。</small>
             </span>
           </label>
         </div>
@@ -671,6 +1120,49 @@ export default function ServicesSettingsPage() {
               。部署后请在 Bot API 的 setWebhook 中填写你的公网 API 地址。
             </div>
           </div>
+        ) : notificationForm.active_channel === "weixin_bot" ? (
+          <div className="settingsGrid notificationSettingsGrid">
+            <label>
+              消息前缀
+              <input
+                value={notificationForm.weixin_bot.message_prefix}
+                onChange={(event) => updateWeixinBot("message_prefix", event.target.value)}
+                placeholder="Workflow Chat"
+              />
+            </label>
+            <label>
+              请求超时（秒）
+              <input
+                min={1}
+                value={notificationForm.weixin_bot.timeout_seconds}
+                onChange={(event) => updateWeixinBot("timeout_seconds", Number(event.target.value) || 8)}
+                type="number"
+              />
+            </label>
+            <div className="settingsHintCard">
+              Bot 登录账号 User ID：
+              <code>{notificationForm.weixin_bot.user_id || "尚未扫码登录"}</code>
+            </div>
+            <div className="settingsHintCard">
+              当前推送目标 User ID：
+              <code>{notificationForm.weixin_bot.target_user_id || "尚未绑定，请启动监听后让目标微信发一条消息"}</code>
+            </div>
+            <label>
+              在线扫码连接
+              <button type="button" onClick={startWeixinBotLogin} disabled={isBusy}>
+                <Send aria-hidden="true" />
+                生成登录二维码
+              </button>
+              <small>后端会自动检测 integrations/weixinProxy 本地依赖；未安装时会在该目录执行 npm install。</small>
+            </label>
+            <div className="settingsHintCard">
+              本地命令：
+              <code>cd integrations/weixinProxy</code>
+              <code>npm run login</code>
+              <code>npm run listen</code>
+              <code>npm run send -- &lt;user_id&gt; &lt;text&gt;</code>
+            </div>
+          </div>
         ) : (
           <div className="emptyInlineNotice">
             <Send aria-hidden="true" />
@@ -678,6 +1170,40 @@ export default function ServicesSettingsPage() {
           </div>
         )}
       </section>
+
+      {weixinLogin.open ? (
+        <div className="modalBackdrop" role="presentation" onMouseDown={() => setWeixinLogin((current) => ({ ...current, open: false }))}>
+          <section
+            className="modalPanel weixinLoginModal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="微信 Bot 扫码登录"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="panelHeader">
+              <Bell aria-hidden="true" />
+              <h2>微信 Bot 扫码登录</h2>
+              <button type="button" onClick={() => setWeixinLogin((current) => ({ ...current, open: false }))}>
+                关闭
+              </button>
+            </div>
+            <div className="weixinQrBox">
+              {weixinLogin.qrDataUrl ? (
+                <img src={weixinLogin.qrDataUrl} alt="微信登录二维码" />
+              ) : (
+                <div className="weixinQrPlaceholder">等待二维码生成...</div>
+              )}
+            </div>
+            <div className="taskMetaGrid">
+              <span>会话：{weixinLogin.sessionId || "生成中"}</span>
+              <span>状态：{weixinLogin.status || "pending"}</span>
+              <span>扫码状态：{weixinLogin.qrStatus || "等待"}</span>
+              <span>微信 User ID：{weixinLogin.userId || notificationForm.weixin_bot.user_id || "等待登录"}</span>
+            </div>
+            <p className="settingsIntro">{weixinLogin.error || weixinLogin.message || "请使用微信扫码并确认登录。"}</p>
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

@@ -25,6 +25,7 @@ from app.schemas.playbooks import (
 )
 from app.services.agent_registry import get_agent
 from app.services.agent_tools import execute_agent_tool
+from app.services.agent_memory import record_completed_run_memory, retrieve_role_memory
 from app.services.message_formatter import format_message_for_boss
 from app.services.notifications import send_approval_notification, send_message_push
 from app.services.prompt_config import get_config_dir
@@ -437,6 +438,17 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
                         "participant_role_keys": run.participant_role_keys,
                     },
                 )
+                if not message_result.get("ok"):
+                    step.output = {
+                        "notification": message_result,
+                        "formatted_message": formatted_content.content,
+                        "formatting": {
+                            "model_name": formatted_content.model_name,
+                            "used_employee_prompt": formatted_content.used_employee_prompt,
+                            "used_boss_profile": formatted_content.used_boss_profile,
+                        },
+                    }
+                    raise RuntimeError(str(message_result.get("message", "消息推送失败。")))
                 step.status = "completed"
                 step.output = {
                     "notification": message_result,
@@ -454,7 +466,9 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
                 step.status = "failed"
                 step.error = str(exc)
                 step.output = {
-                    "formatting": formatted_content.model_dump() if formatted_content else None,
+                    **(step.output or {}),
+                    "formatting": (step.output or {}).get("formatting")
+                    or (formatted_content.model_dump() if formatted_content else None),
                     "raw_content_preview": str(raw_content)[:1000] if raw_content is not None else None,
                 }
                 run.status = "failed"
@@ -503,6 +517,9 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
         run.status = "completed"
 
     run.updated_at = _now()
+    if run.status in {"completed", "cancelled", "failed"} and not run.shared_context.get("memory_reflection_done"):
+        reflection = record_completed_run_memory(run)
+        run.shared_context["memory_reflection_done"] = reflection.task.id if reflection else "skipped"
     write_run_registry(run_registry)
     write_approval_registry(approval_registry)
     cleanup_one_shot_playbook_after_run(run)
@@ -590,10 +607,13 @@ def _terminal_message_step_id(needs_approval: bool, needs_message_push: bool) ->
 
 
 def _build_tool_inputs(run: PlaybookRun, step: PlaybookRunStep) -> dict:
+    role_key = step.assignee_role_key or run.role_key
+    memory = retrieve_role_memory(role_key, str(run.shared_context.get("natural_language") or run.shared_context.get("playbook_name") or ""))
     if not step.config.get("needs_previous_output"):
         return {
             **step.config.get("input_template", {}),
             "shared_context": run.shared_context,
+            "long_term_memory": memory.model_dump(),
         }
 
     previous_output = None
@@ -608,6 +628,7 @@ def _build_tool_inputs(run: PlaybookRun, step: PlaybookRunStep) -> dict:
         "previous_output": previous_output,
         "playbook_run_id": run.id,
         "shared_context": run.shared_context,
+        "long_term_memory": memory.model_dump(),
     }
     for key in step.context_reads:
         if key in run.shared_context:

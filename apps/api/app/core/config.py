@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     config_dir: str = ".workflow-chat"
+    database_url: str = ""
+    memory_markdown_dir: str = ".workflow-chat/memories"
     default_workflow_provider: str = "dify"
     dify_api_base_url: str = "https://api.dify.ai/v1"
     dify_api_key: str = ""

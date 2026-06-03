@@ -309,7 +309,7 @@ export default function OperatorPage() {
     }
     const run = runs.find((item) => item.playbook_id === playbookId);
     const archivedName = run?.shared_context?.playbook_name;
-    return typeof archivedName === "string" && archivedName ? `${archivedName}（已归档）` : `${playbookId}（已归档）`;
+    return typeof archivedName === "string" && archivedName ? `${archivedName}（一次性任务）` : `${playbookId}（一次性任务）`;
   }
 
   function getStepTypeLabel(type: string) {
