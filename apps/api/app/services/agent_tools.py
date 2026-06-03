@@ -3,7 +3,7 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.schemas.agent_tools import AgentToolDefinition, AgentToolExecuteResponse, AgentToolListResponse
 from app.services.agent_registry import get_agent
-from app.services.codex_tools import execute_codex_tool
+from app.services.codex_tools import execute_codex_cli_tool, execute_llm_chat_response_tool
 from app.services.dify_tools import execute_dify_tool
 from app.services.mcp_tools import execute_mcp_tool
 from app.services.tool_registry import get_tool, list_tools
@@ -33,7 +33,7 @@ def list_agent_tools(agent_key: str) -> AgentToolListResponse:
             description=tool.description,
             source=tool.provider,
             enabled=tool.enabled,
-            executable=tool.enabled and (tool.provider == "mcp" or bool(tool.connection.api_key)),
+            executable=tool.enabled and (tool.provider in ("mcp", "codex_cli") or bool(tool.connection.api_key)),
             provider=tool.provider,
             meta={
                 "app_mode": tool.meta.app_mode,
@@ -42,6 +42,10 @@ def list_agent_tools(agent_key: str) -> AgentToolListResponse:
                 "model": tool.connection.model,
                 "endpoint_path": tool.connection.endpoint_path,
                 "mcp_tool_name": tool.connection.mcp_tool_name,
+                "working_directory": tool.connection.working_directory,
+                "codex_command": tool.connection.codex_command,
+                "approval_policy": tool.connection.approval_policy,
+                "sandbox": tool.connection.sandbox,
             },
         )
         for tool in list_tools()
@@ -66,14 +70,16 @@ def execute_agent_tool(agent_key: str, tool_id: str, inputs: dict, user: str | N
         raise HTTPException(status_code=400, detail="Tool is disabled")
     if agent_key not in tool.allowed_roles:
         raise HTTPException(status_code=403, detail="Tool is not authorized for this agent")
-    if tool.provider != "mcp" and not tool.connection.api_key:
+    if tool.provider not in ("mcp", "codex_cli") and not tool.connection.api_key:
         raise HTTPException(status_code=400, detail="Tool API key is required")
 
     resolved_user = user or f"{settings.app_name.lower().replace(' ', '-')}-{agent_key}"
     if tool.provider == "dify":
         result = execute_dify_tool(tool, inputs=inputs, user=resolved_user)
-    elif tool.provider == "codex":
-        result = execute_codex_tool(tool, inputs=inputs, user=resolved_user)
+    elif tool.provider in ("codex", "llm_chat_response"):
+        result = execute_llm_chat_response_tool(tool, inputs=inputs, user=resolved_user)
+    elif tool.provider == "codex_cli":
+        result = execute_codex_cli_tool(tool, inputs=inputs, user=resolved_user)
     elif tool.provider == "mcp":
         result = execute_mcp_tool(tool, inputs=inputs, user=resolved_user)
     else:

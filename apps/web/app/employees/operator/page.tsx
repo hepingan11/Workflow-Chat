@@ -19,7 +19,7 @@ type AgentToolDefinition = {
   id: string;
   name: string;
   description: string;
-  source: "builtin" | "dify" | "codex" | "mcp";
+  source: "builtin" | "dify" | "codex" | "llm_chat_response" | "codex_cli" | "mcp";
   enabled: boolean;
   executable: boolean;
 };
@@ -96,9 +96,9 @@ export default function OperatorPage() {
     fetch("/api/agents/operator/tools")
       .then((response) => response.json())
       .then((data) => {
-        const nextTools = data.tools ?? [];
+        const nextTools = ((data.tools ?? []) as AgentToolDefinition[]).filter((tool) => tool.executable);
         setTools(nextTools);
-        const firstExecutable = nextTools.find((tool: AgentToolDefinition) => tool.source !== "builtin" && tool.executable);
+        const firstExecutable = nextTools[0];
         if (firstExecutable) {
           setSelectedToolId(firstExecutable.id);
         }
@@ -379,15 +379,14 @@ export default function OperatorPage() {
                 className={`toolListItem${tool.id === selectedToolId ? " is-active" : ""}`}
                 key={tool.id}
                 onClick={() => setSelectedToolId(tool.id)}
-                disabled={!tool.executable}
               >
                 <strong>{tool.name}</strong>
                 <small>{tool.description || "暂无描述"}</small>
-                <code>{tool.source} · {tool.executable ? "可执行" : "不可执行"}</code>
+                <code>{tool.source} · 可执行</code>
               </button>
             ))
           ) : (
-            <p className="toolEmpty">当前没有授权工具。</p>
+            <p className="toolEmpty">当前没有可执行的授权工具。</p>
           )}
         </div>
         <label>

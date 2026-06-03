@@ -7,7 +7,7 @@ from app.schemas.tools import (
     ToolSyncResult,
     ToolUpdatePayload,
 )
-from app.services.codex_tools import execute_codex_tool
+from app.services.codex_tools import execute_codex_cli_tool, execute_llm_chat_response_tool
 from app.services.dify_tools import execute_dify_tool, sync_dify_tool
 from app.services.mcp_tools import execute_mcp_tool
 from app.services.tool_registry import (
@@ -80,7 +80,7 @@ def test_run_tool_record(tool_id: str, payload: dict) -> dict:
     tool = get_tool(tool_id)
     if tool is None:
         raise HTTPException(status_code=404, detail="Tool not found")
-    if tool.provider != "mcp" and not tool.connection.api_key:
+    if tool.provider not in ("mcp", "codex_cli") and not tool.connection.api_key:
         raise HTTPException(status_code=400, detail="Tool API key is required for test run")
 
     try:
@@ -98,8 +98,14 @@ def _execute_tool(tool, payload: dict) -> dict:
             inputs=payload.get("inputs", {}),
             user=payload.get("user", "workflow-chat-tool-test"),
         )
-    if tool.provider == "codex":
-        return execute_codex_tool(
+    if tool.provider in ("codex", "llm_chat_response"):
+        return execute_llm_chat_response_tool(
+            tool,
+            inputs=payload.get("inputs", {}),
+            user=payload.get("user", "workflow-chat-tool-test"),
+        )
+    if tool.provider == "codex_cli":
+        return execute_codex_cli_tool(
             tool,
             inputs=payload.get("inputs", {}),
             user=payload.get("user", "workflow-chat-tool-test"),

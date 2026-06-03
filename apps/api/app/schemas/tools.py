@@ -3,15 +3,19 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-ToolProvider = Literal["dify", "codex", "mcp"]
+ToolProvider = Literal["dify", "codex", "llm_chat_response", "codex_cli", "mcp"]
 
 
 class DifyToolConnection(BaseModel):
-    base_url: str
+    base_url: str = ""
     api_key: str = ""
     model: str = ""
     endpoint_path: str = ""
     mcp_tool_name: str = ""
+    working_directory: str = ""
+    codex_command: str = "codex"
+    approval_policy: str = "never"
+    sandbox: str = "danger-full-access"
     timeout_seconds: int = 60
 
 
@@ -63,6 +67,10 @@ class PublicDifyToolConnection(BaseModel):
     model: str = ""
     endpoint_path: str = ""
     mcp_tool_name: str = ""
+    working_directory: str = ""
+    codex_command: str = "codex"
+    approval_policy: str = "never"
+    sandbox: str = "danger-full-access"
     timeout_seconds: int = 60
 
 

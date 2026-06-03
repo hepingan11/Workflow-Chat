@@ -19,6 +19,10 @@ type ToolRecord = {
     model: string;
     endpoint_path: string;
     mcp_tool_name: string;
+    working_directory: string;
+    codex_command: string;
+    approval_policy: string;
+    sandbox: string;
     timeout_seconds: number;
   };
   meta: {
@@ -42,11 +46,15 @@ type ToolForm = {
     model: string;
     endpoint_path: string;
     mcp_tool_name: string;
+    working_directory: string;
+    codex_command: string;
+    approval_policy: string;
+    sandbox: string;
     timeout_seconds: number;
   };
 };
 
-type ToolProvider = "dify" | "codex" | "mcp";
+type ToolProvider = "dify" | "codex" | "llm_chat_response" | "codex_cli" | "mcp";
 
 const emptyForm: ToolForm = {
   name: "",
@@ -60,6 +68,10 @@ const emptyForm: ToolForm = {
     model: "",
     endpoint_path: "",
     mcp_tool_name: "",
+    working_directory: "",
+    codex_command: "codex",
+    approval_policy: "never",
+    sandbox: "danger-full-access",
     timeout_seconds: 60,
   },
 };
@@ -97,6 +109,10 @@ export default function ToolsSettingsPage() {
         model: tool.connection.model,
         endpoint_path: tool.connection.endpoint_path,
         mcp_tool_name: tool.connection.mcp_tool_name,
+        working_directory: tool.connection.working_directory,
+        codex_command: tool.connection.codex_command,
+        approval_policy: tool.connection.approval_policy,
+        sandbox: tool.connection.sandbox,
         timeout_seconds: tool.connection.timeout_seconds,
       },
     });
@@ -133,7 +149,10 @@ export default function ToolsSettingsPage() {
       connection: {
         ...current.connection,
         endpoint_path: getDefaultEndpointPath(provider, current.connection.endpoint_path),
-        timeout_seconds: current.connection.timeout_seconds || 60,
+        codex_command: provider === "codex_cli" ? "codex" : current.connection.codex_command || "codex",
+        approval_policy: provider === "codex_cli" ? "never" : current.connection.approval_policy,
+        sandbox: provider === "codex_cli" ? "danger-full-access" : current.connection.sandbox,
+        timeout_seconds: provider === "codex_cli" ? current.connection.timeout_seconds || 300 : current.connection.timeout_seconds || 60,
       },
     }));
     setTestPayload(getDefaultTestPayload(provider));
@@ -284,8 +303,11 @@ export default function ToolsSettingsPage() {
     if (currentPath) {
       return currentPath;
     }
-    if (provider === "codex") {
+    if (provider === "codex" || provider === "llm_chat_response") {
       return "/responses";
+    }
+    if (provider === "codex_cli") {
+      return '{\n  "prompt": "hi"\n}';
     }
     if (provider === "mcp") {
       return "/mcp";
@@ -294,7 +316,7 @@ export default function ToolsSettingsPage() {
   }
 
   function getDefaultTestPayload(provider: ToolProvider) {
-    if (provider === "codex") {
+    if (provider === "codex" || provider === "llm_chat_response") {
       return '{\n  "prompt": "请总结今天适合运营关注的 AI 新闻。"\n}';
     }
     if (provider === "mcp") {
@@ -303,7 +325,14 @@ export default function ToolsSettingsPage() {
     return "{\n  \n}";
   }
 
-  const providerLabel = form.provider === "codex" ? "Codex" : form.provider === "mcp" ? "MCP" : "Dify";
+  const providerLabel =
+    form.provider === "codex_cli"
+      ? "Codex CLI"
+      : form.provider === "codex" || form.provider === "llm_chat_response"
+        ? "LLM Chat Response"
+        : form.provider === "mcp"
+          ? "MCP"
+          : "Dify";
 
   return (
     <main className="shell">
@@ -387,7 +416,8 @@ export default function ToolsSettingsPage() {
               Provider
               <select value={form.provider} onChange={(event) => updateProvider(event.target.value as ToolProvider)}>
                 <option value="dify">Dify Workflow</option>
-                <option value="codex">Codex API</option>
+                <option value="llm_chat_response">LLM Chat Response</option>
+                <option value="codex_cli">Codex CLI</option>
                 <option value="mcp">MCP Tool</option>
               </select>
             </label>
@@ -406,6 +436,7 @@ export default function ToolsSettingsPage() {
             <textarea value={form.description} onChange={(event) => updateForm("description", event.target.value)} />
           </label>
 
+          {form.provider !== "codex_cli" ? (
           <div className="settingsGrid toolSettingsGrid">
             <label>
               {providerLabel} Base URL
@@ -413,7 +444,7 @@ export default function ToolsSettingsPage() {
                 value={form.connection.base_url}
                 onChange={(event) => updateConnection("base_url", event.target.value)}
                 placeholder={
-                  form.provider === "codex"
+                  form.provider === "codex" || form.provider === "llm_chat_response"
                     ? "https://api.openai.com/v1"
                     : form.provider === "mcp"
                       ? "http://127.0.0.1:3001"
@@ -429,7 +460,7 @@ export default function ToolsSettingsPage() {
                 placeholder={
                   selectedTool?.connection.has_api_key
                     ? "留空表示保留已保存密钥"
-                    : form.provider === "codex"
+                    : form.provider === "codex" || form.provider === "llm_chat_response"
                       ? "sk-xxx"
                       : form.provider === "mcp"
                         ? "Bearer token，可留空"
@@ -446,7 +477,7 @@ export default function ToolsSettingsPage() {
                   读取 /info 和 /parameters
                 </button>
               </label>
-            ) : form.provider === "codex" ? (
+            ) : form.provider === "codex" || form.provider === "llm_chat_response" ? (
               <label>
                 模型名称
                 <input
@@ -455,7 +486,7 @@ export default function ToolsSettingsPage() {
                   placeholder="gpt-5.1-codex 或兼容模型名"
                 />
               </label>
-            ) : (
+            ) : form.provider === "mcp" ? (
               <label>
                 MCP Tool Name
                 <input
@@ -464,10 +495,46 @@ export default function ToolsSettingsPage() {
                   placeholder="服务端 tools/list 中的工具名，留空使用工具名称"
                 />
               </label>
-            )}
+            ) : null}
           </div>
+          ) : null}
 
-          {form.provider === "codex" || form.provider === "mcp" ? (
+          {form.provider === "codex_cli" ? (
+            <div className="settingsGrid toolSettingsGrid">
+              <label>
+                Codex Command
+                <input
+                  value={form.connection.codex_command}
+                  onChange={(event) => updateConnection("codex_command", event.target.value)}
+                  placeholder="codex"
+                />
+              </label>
+              <label>
+                Working Directory
+                <input
+                  value={form.connection.working_directory}
+                  onChange={(event) => updateConnection("working_directory", event.target.value)}
+                  placeholder="D:\\Project\\Test\\Workflow-Chat"
+                />
+              </label>
+              <label>
+                请求超时（秒）
+                <input
+                  min={5}
+                  value={form.connection.timeout_seconds}
+                  onChange={(event) => updateConnection("timeout_seconds", Number(event.target.value) || 300)}
+                  type="number"
+                />
+              </label>
+              <div className="settingsHintCard">
+                完全自动模式：
+                <code>--dangerously-bypass-approvals-and-sandbox</code>
+                <code>codex exec --json</code>
+              </div>
+            </div>
+          ) : null}
+
+          {form.provider === "codex" || form.provider === "llm_chat_response" || form.provider === "mcp" ? (
             <div className="settingsGrid toolSettingsGrid">
               <label>
                 Endpoint Path
@@ -563,8 +630,10 @@ export default function ToolsSettingsPage() {
                     </button>
                   </div>
                   <label>
-                    {selectedTool.provider === "codex"
-                      ? "Codex Inputs JSON"
+                    {selectedTool.provider === "codex_cli"
+                      ? "Codex CLI Prompt JSON"
+                      : selectedTool.provider === "codex" || selectedTool.provider === "llm_chat_response"
+                        ? "LLM Chat Response Inputs JSON"
                       : selectedTool.provider === "mcp"
                         ? "MCP Arguments JSON"
                         : "Workflow Inputs JSON"}
