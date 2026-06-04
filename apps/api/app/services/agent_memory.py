@@ -22,6 +22,10 @@ from app.schemas.memory import (
 from app.schemas.playbooks import PlaybookRun
 from app.schemas.settings import MemoryStorageSettings
 from app.services.memory_settings import read_memory_settings
+from app.services.prompt_config import get_config_dir
+
+
+MEMORY_COMPRESSION_INTERVAL = 10
 
 
 def ensure_memory_store(config: MemoryStorageSettings | None = None) -> bool:
@@ -149,7 +153,7 @@ def create_role_memory(role_key: str, payload: MemoryCreateRequest) -> AgentMemo
 
 
 def record_completed_run_memory(run: PlaybookRun) -> TaskReflectionResult | None:
-    if run.status not in {"completed", "cancelled", "failed"}:
+    if run.status != "completed":
         return None
 
     task = build_task_record(run)
@@ -162,6 +166,10 @@ def record_completed_run_memory(run: PlaybookRun) -> TaskReflectionResult | None
         insert_task_record(task, config)
         for memory in memories:
             insert_memory_record(memory, config)
+
+    if increment_successful_task_count(run.role_key) >= MEMORY_COMPRESSION_INTERVAL:
+        compact_role_memory(run.role_key, task, memories, config)
+        reset_successful_task_count(run.role_key)
 
     return TaskReflectionResult(task=task, memories=memories)
 
@@ -228,6 +236,172 @@ def reflect_run_into_memories(run: PlaybookRun) -> list[AgentMemoryRecord]:
     for memory in memories:
         memory.markdown_path = append_memory_markdown(memory)
     return memories
+
+
+def get_memory_compaction_state_path() -> Path:
+    return get_config_dir() / "memory-compaction-state.json"
+
+
+def read_memory_compaction_state() -> dict:
+    path = get_memory_compaction_state_path()
+    if not path.exists():
+        return {"roles": {}}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"roles": {}}
+
+
+def write_memory_compaction_state(state: dict) -> None:
+    get_memory_compaction_state_path().write_text(
+        json.dumps(state, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def increment_successful_task_count(role_key: str) -> int:
+    state = read_memory_compaction_state()
+    roles = state.setdefault("roles", {})
+    role_state = roles.setdefault(role_key, {"successful_since_compaction": 0, "last_compacted_at": None})
+    role_state["successful_since_compaction"] = int(role_state.get("successful_since_compaction") or 0) + 1
+    write_memory_compaction_state(state)
+    return role_state["successful_since_compaction"]
+
+
+def reset_successful_task_count(role_key: str) -> None:
+    state = read_memory_compaction_state()
+    roles = state.setdefault("roles", {})
+    role_state = roles.setdefault(role_key, {})
+    role_state["successful_since_compaction"] = 0
+    role_state["last_compacted_at"] = now_iso()
+    write_memory_compaction_state(state)
+
+
+def compact_role_memory(
+    role_key: str,
+    latest_task: AgentTaskMemoryRecord,
+    latest_memories: list[AgentMemoryRecord],
+    config: MemoryStorageSettings,
+) -> None:
+    role_dir = get_role_memory_dir(role_key)
+    compacted_at = now_iso()
+    raw_sections = collect_raw_memory_sections(role_dir)
+    compacted_content = build_compacted_memory_markdown(role_key, latest_task, latest_memories, raw_sections, compacted_at)
+    archive_raw_memory_files(role_dir, compacted_at)
+    compacted_path = role_dir / "compacted.md"
+    append_markdown(compacted_path, compacted_content)
+
+    compacted_record = AgentMemoryRecord(
+        id=f"mem_{uuid4().hex[:12]}",
+        role_key=role_key,
+        kind="semantic",
+        title=f"压缩知识库：{role_key} / {compacted_at}",
+        summary=f"已将最近 {MEMORY_COMPRESSION_INTERVAL} 次成功任务沉淀压缩为稳定经验摘要。",
+        content=compacted_content,
+        source_type="memory_compaction",
+        source_id=latest_task.task_id,
+        tags=["compacted", "successful_tasks"],
+        importance=5,
+        markdown_path=str(compacted_path.relative_to(find_project_root())),
+        metadata={"interval": MEMORY_COMPRESSION_INTERVAL, "latest_task_id": latest_task.task_id},
+        created_at=compacted_at,
+        updated_at=compacted_at,
+    )
+
+    if config.database_url and psycopg is not None:
+        ensure_memory_store(config)
+        delete_uncompressed_task_memories(role_key, config)
+        insert_memory_record(compacted_record, config)
+
+
+def collect_raw_memory_sections(role_dir: Path) -> dict[str, str]:
+    sections: dict[str, str] = {}
+    for name in ["tasks.md", "episodic.md", "pitfall.md"]:
+        path = role_dir / name
+        if path.exists():
+            sections[name] = path.read_text(encoding="utf-8")
+    return sections
+
+
+def build_compacted_memory_markdown(
+    role_key: str,
+    latest_task: AgentTaskMemoryRecord,
+    latest_memories: list[AgentMemoryRecord],
+    raw_sections: dict[str, str],
+    compacted_at: str,
+) -> str:
+    task_headings = extract_markdown_headings(raw_sections.get("tasks.md", ""), limit=20)
+    memory_summaries = [
+        f"- [{memory.kind}] {memory.title}: {memory.summary or memory.content[:160]}"
+        for memory in latest_memories
+    ]
+    historical_signals = extract_signal_lines("\n\n".join(raw_sections.values()), limit=24)
+    lines = [
+        f"# {role_key} 压缩知识库",
+        "",
+        f"- 压缩时间：`{compacted_at}`",
+        f"- 压缩策略：每 {MEMORY_COMPRESSION_INTERVAL} 次成功任务保留一次稳定摘要；失败任务不进入知识库。",
+        f"- 最近任务：`{latest_task.task_title}` / `{latest_task.task_id}`",
+        "",
+        "## 稳定经验",
+        *(memory_summaries or ["- 暂无可提炼经验。"]),
+        "",
+        "## 最近成功任务索引",
+        *(task_headings or [f"- {latest_task.task_title}"]),
+        "",
+        "## 可复用信号",
+        *(historical_signals or ["- 暂无额外信号。"]),
+        "",
+        "## 使用原则",
+        "- 优先复用这里的稳定经验、偏好、流程和避坑点。",
+        "- 不要把单次执行流水当成长期事实，除非它在多次任务中重复出现。",
+        "- 如果新任务与旧经验冲突，以最近一次成功任务和人工上传知识为准。",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def extract_markdown_headings(markdown: str, limit: int) -> list[str]:
+    headings = []
+    for line in markdown.splitlines():
+        if line.startswith("## "):
+            headings.append(f"- {line[3:].strip()}")
+    return headings[-limit:]
+
+
+def extract_signal_lines(text: str, limit: int) -> list[str]:
+    signals = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if any(keyword in stripped for keyword in ["复盘", "建议", "优先", "确保", "工具", "消息", "审批", "输入", "输出"]):
+            signals.append(f"- {stripped.lstrip('- ')}")
+    deduped = list(dict.fromkeys(signals))
+    return deduped[-limit:]
+
+
+def archive_raw_memory_files(role_dir: Path, compacted_at: str) -> None:
+    archive_dir = role_dir / "archive" / safe_path_part(compacted_at)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    for name in ["tasks.md", "episodic.md", "pitfall.md"]:
+        path = role_dir / name
+        if path.exists():
+            path.replace(archive_dir / name)
+
+
+def delete_uncompressed_task_memories(role_key: str, config: MemoryStorageSettings) -> None:
+    with psycopg.connect(config.database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                delete from agent_memories
+                where role_key = %s
+                  and source_type = 'playbook_run'
+                """,
+                (role_key,),
+            )
+        connection.commit()
 
 
 def summarize_run(run: PlaybookRun) -> str:

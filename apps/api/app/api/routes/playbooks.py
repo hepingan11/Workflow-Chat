@@ -14,6 +14,7 @@ from app.services.playbooks import (
     create_playbook,
     delete_playbook,
     delete_run,
+    get_run_monitor,
     list_approvals,
     list_playbooks,
     list_runs,
@@ -44,6 +45,11 @@ def create_playbook_request(payload: PlaybookCreateRequest) -> Playbook:
 @router.get("/runs", response_model=list[PublicPlaybookRun])
 def read_runs(playbook_id: str | None = None) -> list[PublicPlaybookRun]:
     return list_runs(playbook_id)
+
+
+@router.get("/runs/{run_id}/monitor")
+def read_run_monitor(run_id: str) -> dict:
+    return get_run_monitor(run_id)
 
 
 @router.post("/scheduler/tick")

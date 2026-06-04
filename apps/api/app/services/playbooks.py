@@ -26,9 +26,11 @@ from app.schemas.playbooks import (
 from app.services.agent_registry import get_agent
 from app.services.agent_tools import execute_agent_tool
 from app.services.agent_memory import record_completed_run_memory, retrieve_role_memory
-from app.services.message_formatter import format_message_for_boss
+from app.services.agent_skills import retrieve_role_skills
+from app.services.message_formatter import format_message_for_boss, request_formatted_message, select_message_model
 from app.services.notifications import send_approval_notification, send_message_push
 from app.services.prompt_config import get_config_dir
+from app.services.run_monitor import append_run_monitor_event, read_run_monitor
 from app.services.time_parser import parse_trigger_time
 from app.services.tool_registry import list_tools
 
@@ -117,7 +119,12 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
                     "tool_id": tool_map.get(tool_names[0], {}).get("id", ""),
                     "tool_name": tool_names[0],
                     "run_at": trigger_time,
-                    "input_template": {"topic": "AI 最新新闻"},
+                    "input_template": _build_initial_tool_input_template(
+                        natural_language,
+                        tool_names[0],
+                        tool_map.get(tool_names[0], {}),
+                        payload.role_key,
+                    ),
                     "needs_previous_output": False,
                 },
             )
@@ -138,7 +145,9 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
                 config={
                     "tool_id": tool_map.get(tool_names[1], {}).get("id", ""),
                     "tool_name": tool_names[1],
-                    "input_template": {},
+                    "input_template": {
+                        "prompt": _build_followup_tool_prompt(natural_language, tool_names[1]),
+                    },
                     "needs_previous_output": True,
                 },
             )
@@ -197,7 +206,9 @@ def parse_playbook(payload: PlaybookParseRequest) -> PlaybookParseResponse:
                     "tool_id": tool_map.get(tool_names[2], {}).get("id", ""),
                     "tool_name": tool_names[2],
                     "run_at": publish_time,
-                    "input_template": {},
+                    "input_template": {
+                        "prompt": _build_followup_tool_prompt(natural_language, tool_names[2]),
+                    },
                     "needs_previous_output": True,
                 },
             )
@@ -235,7 +246,7 @@ def create_playbook(payload: PlaybookCreateRequest) -> Playbook:
         natural_language=payload.natural_language,
         trigger=parsed.trigger,
         collaboration=parsed.collaboration,
-        steps=parsed.steps,
+        steps=payload.steps or parsed.steps,
         updated_at=_now(),
     )
     registry.playbooks.append(playbook)
@@ -362,6 +373,10 @@ def list_runs(playbook_id: str | None = None) -> list[PublicPlaybookRun]:
     return [to_public_run(run) for run in runs]
 
 
+def get_run_monitor(run_id: str) -> dict:
+    return read_run_monitor(run_id)
+
+
 def delete_run(run_id: str) -> PublicPlaybookRun:
     registry = read_run_registry()
     run = next((item for item in registry.runs if item.id == run_id), None)
@@ -396,6 +411,17 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
         if step is None:
             break
 
+        step.error = None
+
+        append_run_monitor_event(
+            run.id,
+            "step_started",
+            f"Step started: {step.name}",
+            step_id=step.id,
+            step_name=step.name,
+            payload={"step_type": step.type, "status": step.status},
+        )
+
         if step.type == "human_approval":
             approval = _get_or_create_approval(run, step, approval_registry)
             step.approval_id = approval.id
@@ -405,18 +431,22 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
                 break
             if approval.status == "rejected":
                 step.status = "cancelled"
+                step.error = None
                 run.status = "cancelled"
                 _advance_to_next(run, step, approved=False)
                 run.updated_at = _now()
                 break
             step.status = "completed"
+            step.error = None
             step.output = {"approval_status": approval.status}
             _write_step_output_to_context(run, step)
+            append_run_monitor_event(run.id, "step_completed", f"Step completed: {step.name}", step_id=step.id, step_name=step.name)
             _advance_to_next(run, step, approved=True)
             continue
 
         if step.type == "message_push":
             step.status = "running"
+            step.error = None
             raw_content = None
             formatted_content = None
             try:
@@ -450,6 +480,7 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
                     }
                     raise RuntimeError(str(message_result.get("message", "消息推送失败。")))
                 step.status = "completed"
+                step.error = None
                 step.output = {
                     "notification": message_result,
                     "formatted_message": formatted_content.content,
@@ -460,11 +491,13 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
                     },
                 }
                 _write_step_output_to_context(run, step)
+                append_run_monitor_event(run.id, "step_completed", f"Step completed: {step.name}", step_id=step.id, step_name=step.name)
                 _advance_to_next(run, step)
                 run.status = "running"
             except Exception as exc:
                 step.status = "failed"
                 step.error = str(exc)
+                append_run_monitor_event(run.id, "step_failed", str(exc), step_id=step.id, step_name=step.name)
                 step.output = {
                     **(step.output or {}),
                     "formatting": (step.output or {}).get("formatting")
@@ -483,8 +516,14 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
                 break
 
             step.status = "running"
+            step.error = None
             try:
                 tool_inputs = _build_tool_inputs(run, step)
+                tool_inputs["_monitor"] = {
+                    "run_id": run.id,
+                    "step_id": step.id,
+                    "step_name": step.name,
+                }
                 tool_result = execute_agent_tool(
                     step.assignee_role_key or run.role_key,
                     step.config["tool_id"],
@@ -492,24 +531,31 @@ def advance_run(run_id: str) -> PlaybookExecuteResponse:
                     user=f"playbook-{run.playbook_id}",
                 )
                 step.status = "completed"
+                step.error = None
                 step.output = tool_result.result
                 _write_step_output_to_context(run, step)
+                append_run_monitor_event(run.id, "step_completed", f"Step completed: {step.name}", step_id=step.id, step_name=step.name)
                 _advance_to_next(run, step)
                 run.status = "running"
             except Exception as exc:
                 step.status = "failed"
                 step.error = str(exc)
+                append_run_monitor_event(run.id, "step_failed", str(exc), step_id=step.id, step_name=step.name)
                 run.status = "failed"
                 break
             continue
 
         if step.type == "handoff":
             step.status = "completed"
+            step.error = None
+            append_run_monitor_event(run.id, "step_completed", f"Step completed: {step.name}", step_id=step.id, step_name=step.name)
             _advance_to_next(run, step)
             continue
 
         if step.type == "noop":
             step.status = "completed"
+            step.error = None
+            append_run_monitor_event(run.id, "step_completed", f"Step completed: {step.name}", step_id=step.id, step_name=step.name)
             _advance_to_next(run, step)
             continue
 
@@ -561,7 +607,7 @@ def to_public_run(run: PlaybookRun) -> PublicPlaybookRun:
 
 
 def _resolve_tools(role_key: str, tool_names: list[str]) -> tuple[dict[str, dict], list[str]]:
-    tools = {tool.name: tool for tool in list_tools() if tool.enabled and role_key in tool.allowed_roles}
+    tools = {tool.name: tool for tool in list_tools() if tool.enabled}
     resolved: dict[str, dict] = {}
     unresolved: list[str] = []
     for tool_name in tool_names:
@@ -569,7 +615,12 @@ def _resolve_tools(role_key: str, tool_names: list[str]) -> tuple[dict[str, dict
         if tool is None:
             unresolved.append(tool_name)
             continue
-        resolved[tool_name] = {"id": tool.id}
+        resolved[tool_name] = {
+            "id": tool.id,
+            "name": tool.name,
+            "description": tool.description,
+            "provider": tool.provider,
+        }
     return resolved, unresolved
 
 
@@ -594,10 +645,6 @@ def _requires_human_approval(text: str) -> bool:
     return any(keyword in text for keyword in ["审批", "确认", "审核", "没问题后", "通过后", "同意后"])
 
 
-def _requires_message_push(text: str) -> bool:
-    return any(keyword in text for keyword in ["发给我", "发送给我", "推送给我", "通知我", "告诉我"])
-
-
 def _terminal_message_step_id(needs_approval: bool, needs_message_push: bool) -> str | None:
     if needs_approval:
         return "step_request_approval"
@@ -606,14 +653,168 @@ def _terminal_message_step_id(needs_approval: bool, needs_message_push: bool) ->
     return None
 
 
+def _requires_message_push(text: str) -> bool:
+    keywords = [
+        "\u53d1\u7ed9\u6211",
+        "\u53d1\u9001\u7ed9\u6211",
+        "\u63a8\u9001\u7ed9\u6211",
+        "\u901a\u77e5\u6211",
+        "\u544a\u8bc9\u6211",
+        "\u63d0\u9192\u6211",
+        "\u6d88\u606f\u63d0\u793a\u6211",
+        "\u53d1\u6d88\u606f\u7ed9\u6211",
+        "\u53d1\u6d88\u606f\u63d0\u793a\u6211",
+        "\u628a\u7ed3\u679c\u53d1\u6211",
+        "\u5b8c\u6210\u540e\u544a\u8bc9\u6211",
+        "\u505a\u5b8c\u540e\u544a\u8bc9\u6211",
+    ]
+    normalized = re.sub(r"\s+", "", text)
+    return any(keyword in normalized for keyword in keywords)
+
+
+def _build_initial_tool_input_template(
+    natural_language: str,
+    tool_name: str,
+    tool_info: dict,
+    role_key: str,
+) -> dict:
+    provider = str(tool_info.get("provider") or "")
+    if provider in {"codex", "llm_chat_response", "codex_cli"}:
+        return {
+            "prompt": _refine_tool_prompt_with_llm(
+                natural_language,
+                tool_name,
+                tool_info,
+                role_key,
+            )
+        }
+    return {"topic": _extract_tool_topic(natural_language, tool_name)}
+
+
+def _extract_tool_topic(natural_language: str, tool_name: str) -> str:
+    text = _strip_mentions_and_tool_refs(natural_language)
+    text = _strip_message_push_intent(text)
+    text = re.sub(r"\b(use|with)\b", "", text, flags=re.IGNORECASE)
+    text = text.replace("使用", "").replace("运行", "").replace("执行", "").replace(tool_name, "")
+    text = re.sub(r"\s+", " ", text).strip(" ，,。；;")
+    return text or natural_language.strip() or tool_name
+
+
+def _build_initial_tool_prompt(natural_language: str, tool_name: str, tool_info: dict) -> str:
+    task = _strip_message_push_intent(_strip_mentions_and_tool_refs(natural_language)).strip(" ，,。；;")
+    tool_description = str(tool_info.get("description") or "").strip()
+    lines = [
+        f"你正在作为工具「{tool_name}」执行用户任务。",
+        f"用户原始需求：{natural_language}",
+    ]
+    if tool_description:
+        lines.append(f"工具说明：{tool_description}")
+    lines.extend(
+        [
+            "",
+            "请完成以下执行目标：",
+            task or natural_language,
+            "",
+            "执行要求：",
+            "1. 直接完成用户要求的实际操作或检查，不要把任务改写成无关主题。",
+            "2. 如果涉及本地文件、目录或终端环境，请基于当前工作目录和可访问环境进行检查。",
+            "3. 输出清晰的执行结果，包含发现、关键路径/文件名和必要的下一步建议。",
+            "4. 如果遇到权限、路径或环境限制，请说明具体限制和你已经尝试的操作。",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _refine_tool_prompt_with_llm(
+    natural_language: str,
+    tool_name: str,
+    tool_info: dict,
+    role_key: str,
+) -> str:
+    fallback = _build_initial_tool_prompt(natural_language, tool_name, tool_info)
+    model = select_message_model(role_key)
+    if not model:
+        return fallback
+
+    system_prompt = (
+        "你是工作流工具输入整理器。你的任务是把用户自然语言需求整理成适合交给工具执行的 prompt。\n"
+        "只输出 prompt 正文，不要输出 JSON，不要解释过程。\n"
+        "必须保留用户的真实意图，不要替换成默认主题，不要编造用户没有要求的任务。\n"
+        "如果用户要求“发给我/告诉我/推送给我”，不要让当前工具负责发消息；当前工具只需产出可被下一步推送的结果。"
+    )
+    user_prompt = "\n".join(
+        [
+            f"角色：{role_key}",
+            f"工具名称：{tool_name}",
+            f"工具类型：{tool_info.get('provider') or 'unknown'}",
+            f"工具说明：{tool_info.get('description') or '未填写'}",
+            "",
+            f"用户原始需求：{natural_language}",
+            "",
+            "请生成适合该工具执行的 prompt。",
+            "要求：",
+            "1. prompt 必须能直接交给工具执行。",
+            "2. 如果是 Codex/Codex CLI，请写成面向代码代理/终端代理的具体执行指令。",
+            "3. 不要包含消息推送动作，只说明需要产出的结果内容。",
+            "4. 不要使用 topic 字段，不要输出结构化 JSON。",
+        ]
+    )
+    try:
+        refined = request_formatted_message(
+            model,
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        ).strip()
+    except Exception:
+        return fallback
+    return refined or fallback
+
+
+def _strip_mentions_and_tool_refs(text: str) -> str:
+    text = re.sub(r"@\w+", "", text)
+    text = re.sub(r"#\{[^}]+\}", "", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _strip_message_push_intent(text: str) -> str:
+    patterns = [
+        r"(然后|并且|再)?\s*(发给我|发送给我|推送给我|通知我|告诉我|提醒我|发消息给我|把结果发我)\s*$",
+        r"(完成后|做完后)\s*(发给我|告诉我|通知我|提醒我)\s*$",
+    ]
+    result = text
+    for pattern in patterns:
+        result = re.sub(pattern, "", result).strip()
+    return result
+
+
+def _build_followup_tool_prompt(natural_language: str, tool_name: str) -> str:
+    return (
+        f"请根据上一步工具输出继续完成当前任务。当前工具：{tool_name}。\n"
+        f"用户原始需求：{natural_language}\n"
+        "要求：\n"
+        "1. 优先使用 previous_output / fetched_result 中的内容作为输入。\n"
+        "2. 如果用户要求生成文件、文档、代码或素材，请直接按要求产出。\n"
+        "3. 如果需要返回给用户，请输出清晰的执行结果摘要、生成内容位置和下一步建议。\n"
+        "4. 不要只复述上一步结果，要完成当前工具应该承担的加工动作。"
+    )
+
+
 def _build_tool_inputs(run: PlaybookRun, step: PlaybookRunStep) -> dict:
     role_key = step.assignee_role_key or run.role_key
-    memory = retrieve_role_memory(role_key, str(run.shared_context.get("natural_language") or run.shared_context.get("playbook_name") or ""))
+    query = str(run.shared_context.get("natural_language") or run.shared_context.get("playbook_name") or "")
+    memory = retrieve_role_memory(role_key, query)
+    selected_skill_ids = step.config.get("selected_skill_ids")
+    if not isinstance(selected_skill_ids, list):
+        selected_skill_ids = None
+    skills = retrieve_role_skills(role_key, query, skill_ids=selected_skill_ids)
     if not step.config.get("needs_previous_output"):
         return {
             **step.config.get("input_template", {}),
             "shared_context": run.shared_context,
             "long_term_memory": memory.model_dump(),
+            "skills": skills.model_dump(),
         }
 
     previous_output = None
@@ -629,6 +830,7 @@ def _build_tool_inputs(run: PlaybookRun, step: PlaybookRunStep) -> dict:
         "playbook_run_id": run.id,
         "shared_context": run.shared_context,
         "long_term_memory": memory.model_dump(),
+        "skills": skills.model_dump(),
     }
     for key in step.context_reads:
         if key in run.shared_context:

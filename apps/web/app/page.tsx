@@ -52,7 +52,7 @@ type ToolSuggestion = {
   id: string;
   name: string;
   description?: string;
-  source?: "builtin" | "dify";
+  source?: "builtin" | "dify" | "codex" | "llm_chat_response" | "codex_cli" | "mcp";
   executable?: boolean;
 };
 
@@ -61,6 +61,17 @@ type PublicToolRecord = {
   name: string;
   description: string;
   enabled: boolean;
+};
+
+type AgentSkillRecord = {
+  id: string;
+  role_key: string;
+  source_type: "manual" | "self_trained";
+  kind: "workflow" | "prompt" | "tool_usage" | "procedure" | "domain";
+  title: string;
+  summary: string;
+  tags: string[];
+  importance: number;
 };
 
 type SuggestionMode = "employee" | "tool";
@@ -272,6 +283,7 @@ export default function Home() {
   const [typedExample, setTypedExample] = useState("");
   const [allTools, setAllTools] = useState<ToolSuggestion[]>([]);
   const [roleTools, setRoleTools] = useState<ToolSuggestion[]>([]);
+  const [skillsByRole, setSkillsByRole] = useState<Record<string, AgentSkillRecord[]>>({});
 
   const filteredEmployees = useMemo(() => {
     if (!mentionRange || suggestionMode !== "employee") {
@@ -396,7 +408,7 @@ export default function Home() {
     fetch(`/api/agents/${selectedRoleKey}/tools`)
       .then((response) => response.json())
       .then((data) => {
-        const nextTools = (data.tools ?? []).filter((tool: ToolSuggestion) => tool.source === "dify");
+        const nextTools = (data.tools ?? []).filter((tool: ToolSuggestion) => tool.executable && tool.source !== "builtin");
         setRoleTools(nextTools);
       })
       .catch(() => setRoleTools([]));
@@ -528,6 +540,7 @@ export default function Home() {
       setParsedPlaybook(data);
       setShowPreview(true);
       setStatus(`已解析给 ${selectedRoleKey} 的任务`);
+      void loadSkillsForPlaybook(data);
       requestAnimationFrame(() => {
         previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
         if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches && previewRef.current) {
@@ -569,6 +582,7 @@ export default function Home() {
           role_key: selectedRoleKey,
           name: `${selectedRoleKey}-task`,
           natural_language: command,
+          steps: parsedPlaybook?.steps,
         }),
       });
       const data = await response.json();
@@ -584,6 +598,66 @@ export default function Home() {
   }
 
   const activeItems = suggestionMode === "employee" ? filteredEmployees : filteredTools;
+
+  async function loadSkillsForPlaybook(playbook: ParsedPlaybook) {
+    const roleKeys = Array.from(
+      new Set(playbook.steps.map((step) => step.assignee_role_key || step.role_key || playbook.role_key).filter(Boolean) as string[]),
+    );
+    await Promise.all(
+      roleKeys.map(async (roleKey) => {
+        if (skillsByRole[roleKey]) {
+          return;
+        }
+        try {
+          const response = await fetch(`/api/agents/${roleKey}/skills?limit=50`, { cache: "no-store" });
+          const data = await response.json();
+          if (response.ok) {
+            setSkillsByRole((current) => ({ ...current, [roleKey]: data.skills ?? [] }));
+          }
+        } catch {
+          setSkillsByRole((current) => ({ ...current, [roleKey]: [] }));
+        }
+      }),
+    );
+  }
+
+  function getStepRoleKey(step: ParsedPlaybook["steps"][number], playbook: ParsedPlaybook) {
+    return step.assignee_role_key || step.role_key || playbook.role_key;
+  }
+
+  function getSelectedSkillIds(step: ParsedPlaybook["steps"][number]) {
+    const selected = step.config.selected_skill_ids;
+    return Array.isArray(selected) ? selected.filter((item): item is string => typeof item === "string") : [];
+  }
+
+  function toggleStepSkill(stepId: string, skillId: string) {
+    setParsedPlaybook((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        steps: current.steps.map((step) => {
+          if (step.id !== stepId) {
+            return step;
+          }
+          const selected = new Set(getSelectedSkillIds(step));
+          if (selected.has(skillId)) {
+            selected.delete(skillId);
+          } else {
+            selected.add(skillId);
+          }
+          return {
+            ...step,
+            config: {
+              ...step.config,
+              selected_skill_ids: Array.from(selected),
+            },
+          };
+        }),
+      };
+    });
+  }
 
   return (
     <main className="shell homeShell" ref={shellRef}>
@@ -811,6 +885,27 @@ export default function Home() {
                       <div className="flowPrompt">
                         <strong>{step.type === "human_approval" ? "确认消息" : step.type === "message_push" ? "推送内容来源" : "执行提示词/输入"}</strong>
                         <p>{getStepPrompt(step)}</p>
+                      </div>
+
+                      <div className="flowSkillPicker">
+                        <strong>节点 Skills</strong>
+                        <p>当前节点角色：{getRoleName(getStepRoleKey(step, parsedPlaybook))}</p>
+                        <div className="flowSkillList">
+                          {(skillsByRole[getStepRoleKey(step, parsedPlaybook)] ?? []).length ? (
+                            (skillsByRole[getStepRoleKey(step, parsedPlaybook)] ?? []).map((skill) => {
+                              const checked = getSelectedSkillIds(step).includes(skill.id);
+                              return (
+                                <label className="flowSkillChip" key={skill.id}>
+                                  <input checked={checked} onChange={() => toggleStepSkill(step.id, skill.id)} type="checkbox" />
+                                  <span>{skill.title}</span>
+                                  <small>{skill.kind} · {skill.source_type === "manual" ? "人工" : "自训"}</small>
+                                </label>
+                              );
+                            })
+                          ) : (
+                            <span className="flowSkillEmpty">该角色暂无 Skills，可到员工管理页人工上传。</span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="flowNextAction">

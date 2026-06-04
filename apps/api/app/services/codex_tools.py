@@ -1,4 +1,6 @@
 import json
+import os
+import threading
 import subprocess
 from pathlib import Path
 from shutil import which
@@ -7,6 +9,7 @@ from typing import Any
 import httpx
 
 from app.schemas.tools import ToolRecord
+from app.services.run_monitor import append_run_monitor_event
 
 
 def execute_codex_tool(tool: ToolRecord, inputs: dict[str, Any], user: str) -> dict[str, Any]:
@@ -44,29 +47,58 @@ def execute_codex_cli_tool(tool: ToolRecord, inputs: dict[str, Any], user: str) 
     if working_directory and not Path(working_directory).exists():
         raise FileNotFoundError(f"Working Directory does not exist: {working_directory}")
     timeout_seconds = max(tool.connection.timeout_seconds, 1)
+    monitor_context = _get_monitor_context(inputs)
     argv = [
         command,
         "exec",
         "--json",
         "--dangerously-bypass-approvals-and-sandbox",
-        prompt,
     ]
     if working_directory:
         argv[2:2] = ["--cd", working_directory]
-    completed = subprocess.run(
-        argv,
-        cwd=working_directory,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout_seconds,
-    )
+    append_run_monitor_event(
+        monitor_context["run_id"],
+        "codex_started",
+        "Codex CLI started.",
+        step_id=monitor_context["step_id"],
+        step_name=monitor_context["step_name"],
+        payload={"command": " ".join(argv), "prompt_transport": "stdin", "timeout_seconds": timeout_seconds},
+    ) if monitor_context["run_id"] else None
+    try:
+        completed = _run_codex_process(
+            argv,
+            working_directory=working_directory,
+            prompt=prompt,
+            timeout_seconds=timeout_seconds,
+            monitor_context=monitor_context,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = _decode_process_output(exc.output or b"")
+        stderr = _decode_process_output(exc.stderr or b"")
+        return {
+            "ok": False,
+            "provider": "codex_cli",
+            "command": " ".join(argv),
+            "prompt_transport": "stdin",
+            "working_directory": working_directory,
+            "approval_policy": "bypass",
+            "sandbox": "danger-full-access",
+            "user": user,
+            "returncode": None,
+            "thread_id": "",
+            "message": f"Codex CLI timed out after {timeout_seconds} seconds.",
+            "usage": {},
+            "events": [],
+            "stdout": stdout[-4000:],
+            "stderr": stderr[-4000:],
+            "error": f"Codex CLI timed out after {timeout_seconds} seconds.",
+        }
     parsed = _parse_codex_jsonl(completed.stdout)
     return {
         "ok": completed.returncode == 0,
         "provider": "codex_cli",
-        "command": " ".join(argv[:-1] + ["<prompt>"]),
+        "command": " ".join(argv),
+        "prompt_transport": "stdin",
         "working_directory": working_directory,
         "approval_policy": "bypass",
         "sandbox": "danger-full-access",
@@ -78,6 +110,128 @@ def execute_codex_cli_tool(tool: ToolRecord, inputs: dict[str, Any], user: str) 
         "events": parsed["events"],
         "stdout": completed.stdout[-4000:],
         "stderr": completed.stderr[-4000:],
+    }
+
+
+def _run_codex_process(
+    argv: list[str],
+    *,
+    working_directory: str | None,
+    prompt: str,
+    timeout_seconds: int,
+    monitor_context: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env.update(
+        {
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+            "NO_COLOR": "1",
+            "FORCE_COLOR": "0",
+        }
+    )
+    process = subprocess.Popen(
+        argv,
+        cwd=working_directory,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    stdout_lines: list[str] = []
+    stderr_lines: list[str] = []
+
+    def pump(stream, target: list[str], stream_name: str) -> None:
+        if stream is None:
+            return
+        for line in stream:
+            decoded = _decode_process_output(line)
+            target.append(decoded)
+            _append_codex_stream_event(monitor_context, stream_name, decoded)
+
+    stdout_thread = threading.Thread(target=pump, args=(process.stdout, stdout_lines, "stdout"), daemon=True)
+    stderr_thread = threading.Thread(target=pump, args=(process.stderr, stderr_lines, "stderr"), daemon=True)
+    stdout_thread.start()
+    stderr_thread.start()
+    if process.stdin is not None:
+        process.stdin.write(prompt.encode("utf-8"))
+        process.stdin.close()
+    try:
+        returncode = process.wait(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        process.kill()
+        stdout_thread.join(timeout=1)
+        stderr_thread.join(timeout=1)
+        stdout = "".join(stdout_lines)
+        stderr = "".join(stderr_lines)
+        if monitor_context["run_id"]:
+            append_run_monitor_event(
+                monitor_context["run_id"],
+                "codex_timeout",
+                f"Codex CLI timed out after {timeout_seconds} seconds.",
+                step_id=monitor_context["step_id"],
+                step_name=monitor_context["step_name"],
+                payload={"stdout_tail": stdout[-2000:], "stderr_tail": stderr[-2000:]},
+            )
+        raise subprocess.TimeoutExpired(exc.cmd, exc.timeout, output=stdout, stderr=stderr) from exc
+    stdout_thread.join(timeout=1)
+    stderr_thread.join(timeout=1)
+    return subprocess.CompletedProcess(
+        args=argv,
+        returncode=returncode,
+        stdout="".join(stdout_lines),
+        stderr="".join(stderr_lines),
+    )
+
+
+def _decode_process_output(raw: bytes | str) -> str:
+    if isinstance(raw, str):
+        return raw
+    for encoding in ("utf-8", "utf-8-sig", "gb18030", "gbk", "cp936"):
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def _append_codex_stream_event(monitor_context: dict[str, str], stream_name: str, line: str) -> None:
+    run_id = monitor_context["run_id"]
+    if not run_id:
+        return
+    clean_line = line.rstrip()
+    if not clean_line:
+        return
+    payload: dict[str, Any] = {}
+    message = clean_line
+    event_type = "codex_terminal"
+    if stream_name == "stdout":
+        try:
+            payload = json.loads(clean_line)
+            event_type = str(payload.get("type", "codex_event"))
+            item = payload.get("item") if isinstance(payload.get("item"), dict) else {}
+            message = item.get("text") or payload.get("type") or clean_line
+        except ValueError:
+            pass
+    append_run_monitor_event(
+        run_id,
+        event_type,
+        str(message),
+        step_id=monitor_context["step_id"],
+        step_name=monitor_context["step_name"],
+        stream=stream_name,
+        payload=payload,
+    )
+
+
+def _get_monitor_context(inputs: dict[str, Any]) -> dict[str, str]:
+    metadata = inputs.get("_monitor")
+    if not isinstance(metadata, dict):
+        metadata = {}
+    return {
+        "run_id": str(metadata.get("run_id", "")),
+        "step_id": str(metadata.get("step_id", "")),
+        "step_name": str(metadata.get("step_name", "")),
     }
 
 
@@ -95,11 +249,44 @@ def _resolve_codex_command(command: str) -> str:
 
 
 def _extract_prompt(inputs: dict[str, Any]) -> str:
+    primary_prompt = ""
     for key in ("prompt", "task", "instruction", "input"):
         value = inputs.get(key)
         if isinstance(value, str) and value.strip():
-            return value.strip()
-    return str(inputs)
+            primary_prompt = value.strip()
+            break
+
+    supplemental_inputs = {
+        key: value
+        for key, value in inputs.items()
+        if key not in {"prompt", "task", "instruction", "input"}
+    }
+    if not supplemental_inputs:
+        return primary_prompt or json.dumps(inputs, ensure_ascii=False, indent=2)
+
+    sections: list[str] = []
+    if primary_prompt:
+        sections.append(primary_prompt)
+    else:
+        sections.append("请根据以下结构化输入完成任务。")
+
+    for key in ("previous_output", "fetched_result", "generated_asset", "shared_context", "long_term_memory", "skills"):
+        if key in supplemental_inputs:
+            sections.append(f"{key}:\n{_stringify_prompt_value(supplemental_inputs.pop(key))}")
+
+    if supplemental_inputs:
+        sections.append(f"other_inputs:\n{_stringify_prompt_value(supplemental_inputs)}")
+
+    return "\n\n".join(section for section in sections if section.strip())
+
+
+def _stringify_prompt_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip() or '""'
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=2)
+    except TypeError:
+        return str(value)
 
 
 def _parse_codex_jsonl(stdout: str) -> dict[str, Any]:

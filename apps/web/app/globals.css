@@ -1375,6 +1375,84 @@ small {
   margin-top: 24px;
 }
 
+.operatorStackedConsole {
+  grid-template-columns: 1fr;
+}
+
+.monitorStartAction {
+  display: none;
+}
+
+.monitorConsole {
+  align-items: stretch;
+}
+
+.monitorConsole .publishPanel {
+  min-height: 420px;
+}
+
+.monitorConsole .automationList {
+  gap: 12px;
+}
+
+.monitorConsole .automationCard {
+  position: relative;
+  padding: 16px 16px 16px 18px;
+  border-color: rgb(25 115 97 / 32%);
+  background:
+    linear-gradient(90deg, rgb(25 115 97 / 8%), transparent 42%),
+    #fffdf8;
+}
+
+.monitorConsole .automationCard::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 18px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(25 115 97 / 34%);
+  background: var(--accent);
+  box-shadow: 0 0 0 5px rgb(25 115 97 / 10%);
+}
+
+.monitorConsole .automationCard h3 {
+  margin: 0 0 12px;
+  padding-left: 26px;
+  font-size: 18px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.monitorConsole .taskMetaGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.monitorConsole .taskMetaGrid span {
+  min-height: 46px;
+  background: rgb(255 255 255 / 72%);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.monitorConsole .taskMetaGrid span:nth-child(2) {
+  border-color: rgb(25 115 97 / 38%);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.monitorTerminalPre {
+  height: 420px;
+  max-height: 420px;
+  min-height: 420px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
 .automationList {
   display: grid;
   gap: 14px;
@@ -1540,6 +1618,227 @@ small {
   background: rgb(32 33 31 / 46%);
   padding: 24px;
   backdrop-filter: blur(8px);
+}
+
+.memoryPanel {
+  margin-top: 24px;
+}
+
+.memoryPanel .panelHeader p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.memorySearchBar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.memoryStats,
+.memoryTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.memoryStats {
+  margin-top: 14px;
+}
+
+.memoryStats span,
+.memoryTags span {
+  border: 1px solid rgb(31 111 95 / 24%);
+  background: rgb(31 111 95 / 7%);
+  color: var(--accent);
+  padding: 6px 8px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
+.memoryKindGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.memoryKindCard {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: #fffdf8;
+  padding: 16px;
+}
+
+.memoryKindCard h3 {
+  margin: 0 0 12px;
+}
+
+.memoryList {
+  display: grid;
+  gap: 10px;
+}
+
+.memoryCard {
+  border: 1px solid rgb(31 111 95 / 20%);
+  background: rgb(250 247 239 / 74%);
+  padding: 12px;
+}
+
+.memoryCard summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.memoryCard summary::-webkit-details-marker {
+  display: none;
+}
+
+.memoryCard summary span {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.memoryCard summary small,
+.memoryCard > small {
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+}
+
+.memoryCard p {
+  margin: 12px 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.memoryCard pre,
+.memoryMarkdownPreview pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  background: #171915;
+  color: #dce8cf;
+  padding: 12px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.memoryMarkdownPreview {
+  margin-top: 16px;
+  border: 1px dashed rgb(31 111 95 / 28%);
+  padding: 12px;
+}
+
+.memoryMarkdownPreview summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.flowSkillPicker {
+  border: 1px dashed rgb(31 111 95 / 28%);
+  background: rgb(31 111 95 / 5%);
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.flowSkillPicker > strong {
+  display: block;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.flowSkillPicker > p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.flowSkillList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flowSkillChip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 8px;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid rgb(31 111 95 / 22%);
+  background: #fffdf8;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.flowSkillChip input {
+  margin: 0;
+}
+
+.flowSkillChip span {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.flowSkillChip small {
+  grid-column: 2;
+  color: var(--muted);
+  font-family: "Courier New", monospace;
+}
+
+.flowSkillEmpty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.skillPanel {
+  margin-top: 24px;
+}
+
+.skillPanel .panelHeader p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.skillCreateForm {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+  border: 1px dashed rgb(31 111 95 / 28%);
+  background: rgb(31 111 95 / 5%);
+  padding: 14px;
+}
+
+.skillCreateForm textarea {
+  grid-column: 1 / -1;
+  min-height: 140px;
+}
+
+.skillCreateForm button {
+  justify-self: start;
+}
+
+.skillGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.skillCard {
+  background:
+    linear-gradient(135deg, rgb(31 111 95 / 8%), transparent 44%),
+    rgb(250 247 239 / 80%);
 }
 
 .modalPanel {
@@ -1843,8 +2142,15 @@ small {
   .notificationChannelGrid,
   .taskMetaGrid,
   .roleConfigGrid,
+  .memoryKindGrid,
+  .skillGrid,
+  .skillCreateForm,
   .toolWorkbench {
     grid-template-columns: 1fr;
+  }
+
+  .skillCreateForm textarea {
+    grid-column: auto;
   }
 
   .statusPanel {

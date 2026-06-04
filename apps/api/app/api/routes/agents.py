@@ -4,7 +4,9 @@ from app.schemas.agent import AgentProfile
 from app.schemas.memory import AgentMemoryRecord, MemoryCreateRequest, MemorySearchResult
 from app.schemas.operator import OperatorPromptConfig, OperatorPromptUpdate
 from app.schemas.agent_tools import AgentToolExecutePayload, AgentToolExecuteResponse, AgentToolListResponse
+from app.schemas.skills import AgentSkillRecord, SkillCreateRequest, SkillSearchResult
 from app.services.agent_memory import create_role_memory, ensure_memory_store, retrieve_role_memory
+from app.services.agent_skills import create_role_skill, retrieve_role_skills
 from app.services.agent_tools import execute_agent_tool, list_agent_tools
 from app.services.agent_registry import get_agent, list_agents
 from app.services.prompt_config import read_agent_prompt, write_agent_prompt
@@ -60,6 +62,22 @@ def create_agent_memory(agent_key: str, payload: MemoryCreateRequest) -> AgentMe
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return create_role_memory(agent_key, payload)
+
+
+@router.get("/{agent_key}/skills", response_model=SkillSearchResult)
+def search_agent_skills(agent_key: str, q: str = "", limit: int = 12) -> SkillSearchResult:
+    agent = get_agent(agent_key)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return retrieve_role_skills(agent_key, q, limit)
+
+
+@router.post("/{agent_key}/skills", response_model=AgentSkillRecord)
+def create_agent_skill(agent_key: str, payload: SkillCreateRequest) -> AgentSkillRecord:
+    agent = get_agent(agent_key)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return create_role_skill(agent_key, payload)
 
 
 @router.post("/memory-store/init")

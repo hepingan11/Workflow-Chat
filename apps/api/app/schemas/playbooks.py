@@ -144,6 +144,7 @@ class PlaybookCreateRequest(BaseModel):
     role_key: str
     natural_language: str = Field(min_length=1)
     name: str = Field(min_length=1)
+    steps: list[PlaybookStep] | None = None
 
 
 class PlaybookParseResponse(BaseModel):

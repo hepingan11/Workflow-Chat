@@ -49,7 +49,7 @@ def list_agent_tools(agent_key: str) -> AgentToolListResponse:
             },
         )
         for tool in list_tools()
-        if tool.enabled and agent_key in tool.allowed_roles
+        if tool.enabled
     ]
 
     return AgentToolListResponse(agent_key=agent_key, tools=[*builtin_tools, *registered_tools])
@@ -68,8 +68,6 @@ def execute_agent_tool(agent_key: str, tool_id: str, inputs: dict, user: str | N
         raise HTTPException(status_code=404, detail="Tool not found")
     if not tool.enabled:
         raise HTTPException(status_code=400, detail="Tool is disabled")
-    if agent_key not in tool.allowed_roles:
-        raise HTTPException(status_code=403, detail="Tool is not authorized for this agent")
     if tool.provider not in ("mcp", "codex_cli") and not tool.connection.api_key:
         raise HTTPException(status_code=400, detail="Tool API key is required")
 

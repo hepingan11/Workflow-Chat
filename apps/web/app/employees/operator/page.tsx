@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { AgentMemoryPanel } from "../../components/AgentMemoryPanel";
+import { AgentSkillPanel } from "../../components/AgentSkillPanel";
+
 type AgentToolDefinition = {
   id: string;
   name: string;
@@ -72,6 +75,24 @@ type ApprovalRecord = {
   message: string;
 };
 
+type RunMonitorEvent = {
+  time: string;
+  type: string;
+  step_id: string;
+  step_name: string;
+  stream: string;
+  message: string;
+  payload?: Record<string, unknown>;
+};
+
+type RunMonitor = {
+  run_id: string;
+  status: string;
+  current_step_id: string;
+  events: RunMonitorEvent[];
+  updated_at: string | null;
+};
+
 export default function OperatorPage() {
   const [prompt, setPrompt] = useState("");
   const [tools, setTools] = useState<AgentToolDefinition[]>([]);
@@ -86,6 +107,8 @@ export default function OperatorPage() {
   const [selectedRunId, setSelectedRunId] = useState("");
   const [workflowStatus, setWorkflowStatus] = useState("等待编排");
   const [isBusy, setIsBusy] = useState(false);
+  const [runMonitor, setRunMonitor] = useState<RunMonitor | null>(null);
+  const [monitoringRunId, setMonitoringRunId] = useState("");
 
   useEffect(() => {
     fetch("/api/operator/prompt")
@@ -107,6 +130,32 @@ export default function OperatorPage() {
 
     refreshAutomation();
   }, []);
+
+  useEffect(() => {
+    if (!monitoringRunId) {
+      return undefined;
+    }
+    let cancelled = false;
+    async function pollMonitor() {
+      try {
+        const response = await fetch(`/api/playbooks/runs/${monitoringRunId}/monitor`, { cache: "no-store" });
+        const data = await response.json();
+        if (!cancelled) {
+          setRunMonitor(data);
+        }
+      } catch {
+        if (!cancelled) {
+          setWorkflowStatus("实时监控读取失败");
+        }
+      }
+    }
+    pollMonitor();
+    const timer = window.setInterval(pollMonitor, 1500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [monitoringRunId]);
 
   async function refreshAutomation() {
     try {
@@ -264,6 +313,7 @@ export default function OperatorPage() {
 
   async function advanceRun(runId: string) {
     setIsBusy(true);
+    setMonitoringRunId(runId);
     try {
       const response = await fetch(`/api/playbooks/runs/${runId}/advance`, {
         method: "POST",
@@ -301,6 +351,8 @@ export default function OperatorPage() {
   }
 
   const selectedRun = runs.find((run) => run.id === selectedRunId) ?? runs[0];
+  const activeMonitorEvents = runMonitor?.events ?? [];
+  const codexMonitorEvents = activeMonitorEvents.filter((event) => event.type.startsWith("codex") || event.stream);
 
   function getPlaybookName(playbookId: string) {
     const playbook = playbooks.find((item) => item.id === playbookId);
@@ -326,6 +378,44 @@ export default function OperatorPage() {
       return "角色交接";
     }
     return "流程节点";
+  }
+
+  function getStepStatusLabel(status: string) {
+    if (status === "completed") {
+      return "已完成";
+    }
+    if (status === "running") {
+      return "执行中";
+    }
+    if (status === "failed") {
+      return "失败";
+    }
+    if (status === "waiting_approval") {
+      return "待确认";
+    }
+    if (status === "scheduled") {
+      return "等待时间";
+    }
+    if (status === "cancelled") {
+      return "已取消";
+    }
+    return "等待执行";
+  }
+
+  function getStepStatusTone(status: string) {
+    if (status === "completed") {
+      return "done";
+    }
+    if (status === "running") {
+      return "running";
+    }
+    if (status === "failed" || status === "cancelled") {
+      return "error";
+    }
+    if (status === "waiting_approval" || status === "scheduled") {
+      return "waiting";
+    }
+    return "idle";
   }
 
   return (
@@ -399,7 +489,7 @@ export default function OperatorPage() {
         <div className="panelHeader">
           <ShieldCheck aria-hidden="true" />
           <h2>当前运营任务</h2>
-          <div className="toolActions">
+          <div className="toolActions monitorStartAction">
             <button type="button" onClick={refreshAutomation} disabled={isBusy}>
               <RefreshCcw aria-hidden="true" />
               刷新
@@ -407,7 +497,7 @@ export default function OperatorPage() {
           </div>
         </div>
 
-        <div className="operatorConsole automationConsole">
+        <div className="operatorConsole automationConsole operatorStackedConsole">
           <div className="publishPanel">
             <div className="panelHeader">
               <Megaphone aria-hidden="true" />
@@ -505,7 +595,52 @@ export default function OperatorPage() {
         </div>
       </section>
 
-      <section className="operatorConsole automationConsole" aria-label="节点日志与审批">
+      <section className="settingsPanel" aria-label="运行实时监控">
+        <div className="panelHeader">
+          <RefreshCcw aria-hidden="true" />
+          <h2>运行实时监控</h2>
+          <div className="toolActions">
+            <button type="button" onClick={() => selectedRun?.id && setMonitoringRunId(selectedRun.id)} disabled={!selectedRun}>
+              开始监控
+            </button>
+          </div>
+        </div>
+        {runMonitor ? (
+          <div className="operatorConsole automationConsole monitorConsole">
+            <section className="publishPanel">
+              <h3>步骤状态</h3>
+              <div className="automationList">
+                {(runs.find((run) => run.id === runMonitor.run_id) ?? selectedRun)?.steps.map((step, index) => (
+                  <article className="automationCard" key={step.id}>
+                    <h3>{index + 1}. {step.name}</h3>
+                    <div className="taskMetaGrid">
+                      <span>类型：{getStepTypeLabel(step.type)}</span>
+                      <span>状态：{step.status}</span>
+                      <span>节点：{step.id}</span>
+                    </div>
+                    {step.error ? <p className="nodeError">{step.error}</p> : null}
+                  </article>
+                ))}
+              </div>
+            </section>
+            <section className="publishPanel">
+              <h3>Codex / 终端监控</h3>
+              <pre className="nodeLogPre monitorTerminalPre">
+                {codexMonitorEvents.length
+                  ? codexMonitorEvents
+                      .slice(-80)
+                      .map((event) => `[${event.time}] ${event.stream || event.type} ${event.step_name || event.step_id}\n${event.message}`)
+                      .join("\n\n")
+                  : "等待 Codex 或终端输出..."}
+              </pre>
+            </section>
+          </div>
+        ) : (
+          <p className="toolEmpty">点击某个运行实例的“推进运行”后，这里会显示实时步骤和 Codex 终端信息。</p>
+        )}
+      </section>
+
+      <section className="operatorConsole automationConsole operatorStackedConsole" aria-label="节点日志与审批">
         <div className="publishPanel">
           <div className="panelHeader">
             <FileText aria-hidden="true" />
@@ -578,6 +713,9 @@ export default function OperatorPage() {
           </div>
         </div>
       </section>
+
+      <AgentMemoryPanel roleKey="operator" roleName="运营员工" />
+      <AgentSkillPanel roleKey="operator" roleName="运营员工" />
 
       {showToolResult ? (
         <div className="modalBackdrop" role="presentation" onMouseDown={() => setShowToolResult(false)}>

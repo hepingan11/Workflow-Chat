@@ -135,6 +135,7 @@ export default function ToolsSettingsPage() {
   function selectTool(tool: ToolRecord | null) {
     setSelectedToolId(tool?.id ?? null);
     fillForm(tool);
+    setTestPayload(getDefaultTestPayload(tool?.provider ?? emptyForm.provider));
     setTestResult("");
   }
 
@@ -168,24 +169,12 @@ export default function ToolsSettingsPage() {
     }));
   }
 
-  function toggleRole(roleKey: string) {
-    setForm((current) => ({
-      ...current,
-      allowed_roles: current.allowed_roles.includes(roleKey)
-        ? current.allowed_roles.filter((key) => key !== roleKey)
-        : [...current.allowed_roles, roleKey],
-    }));
+  function toggleRole(_roleKey: string) {
+    setForm((current) => ({ ...current, allowed_roles: [] }));
   }
 
   function toggleAllRoles() {
-    setForm((current) => {
-      const allRoleKeys = employees.map((employee) => employee.key);
-      const hasAllRoles = allRoleKeys.every((key) => current.allowed_roles.includes(key));
-      return {
-        ...current,
-        allowed_roles: hasAllRoles ? [] : allRoleKeys,
-      };
-    });
+    setForm((current) => ({ ...current, allowed_roles: [] }));
   }
 
   async function saveTool() {
@@ -197,7 +186,7 @@ export default function ToolsSettingsPage() {
       const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, allowed_roles: [] }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -316,6 +305,9 @@ export default function ToolsSettingsPage() {
   }
 
   function getDefaultTestPayload(provider: ToolProvider) {
+    if (provider === "codex_cli") {
+      return '{\n  "prompt": "你好"\n}';
+    }
     if (provider === "codex" || provider === "llm_chat_response") {
       return '{\n  "prompt": "请总结今天适合运营关注的 AI 新闻。"\n}';
     }
@@ -573,7 +565,7 @@ export default function ToolsSettingsPage() {
             </div>
           ) : null}
 
-          <div className="toolRoles">
+          <div className="toolRoles" style={{ display: "none" }}>
             <h3>授权角色</h3>
             <div className="roleChips">
               <label className="roleChip roleChipAll">

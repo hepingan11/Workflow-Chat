@@ -15,6 +15,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { AgentMemoryPanel } from "../../components/AgentMemoryPanel";
+import { AgentSkillPanel } from "../../components/AgentSkillPanel";
+
 type AgentToolDefinition = {
   id: string;
   name: string;
@@ -582,6 +585,9 @@ export default function ProductManagerPage() {
           </div>
         </div>
       </section>
+
+      <AgentMemoryPanel roleKey={ROLE_KEY} roleName="产品经理" />
+      <AgentSkillPanel roleKey={ROLE_KEY} roleName="产品经理" />
 
       {showToolResult ? (
         <div className="modalBackdrop" role="presentation" onMouseDown={() => setShowToolResult(false)}>
