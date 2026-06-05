@@ -7,29 +7,31 @@
 Windows PowerShell:
 
 ```powershell
-iwr https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.ps1 -UseBasicParsing | iex
+$script = iwr https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.ps1 -UseBasicParsing
+[Text.Encoding]::UTF8.GetString($script.RawContentStream.ToArray()) | iex
 ```
 
 macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.sh | bash
 ```
 
 可选环境变量：
 
 ```powershell
-$env:WORKFLOW_CHAT_REPO_URL="https://github.com/hepingan11/Guiwuli-Digital-Employee.git"
+$env:WORKFLOW_CHAT_REPO_URL="https://github.com/hepingan11/Workflow-Chat.git"
 $env:WORKFLOW_CHAT_BRANCH="main"
 $env:WORKFLOW_CHAT_INSTALL_DIR="D:\Workflow-Chat"
-iwr https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.ps1 -UseBasicParsing | iex
+$script = iwr https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.ps1 -UseBasicParsing
+[Text.Encoding]::UTF8.GetString($script.RawContentStream.ToArray()) | iex
 ```
 
 ```bash
-WORKFLOW_CHAT_REPO_URL="https://github.com/hepingan11/Guiwuli-Digital-Employee.git" \
+WORKFLOW_CHAT_REPO_URL="https://github.com/hepingan11/Workflow-Chat.git" \
 WORKFLOW_CHAT_BRANCH="main" \
 WORKFLOW_CHAT_INSTALL_DIR="$HOME/Workflow-Chat" \
-curl -fsSL https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.sh | bash
 ```
 
 脚本会自动 clone 或更新仓库，然后调用本地 `setup.ps1` / `setup.sh`。

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${WORKFLOW_CHAT_REPO_URL:-https://github.com/hepingan11/Guiwuli-Digital-Employee.git}"
+REPO_URL="${WORKFLOW_CHAT_REPO_URL:-https://github.com/hepingan11/Workflow-Chat.git}"
 BRANCH="${WORKFLOW_CHAT_BRANCH:-main}"
-INSTALL_DIR="${WORKFLOW_CHAT_INSTALL_DIR:-$(pwd)/Guiwuli-Digital-Employee}"
+INSTALL_DIR="${WORKFLOW_CHAT_INSTALL_DIR:-$(pwd)/Workflow-Chat}"
 
 require_command() {
   local name="$1"

@@ -2,16 +2,19 @@ $ErrorActionPreference = "Stop"
 
 Set-Location -Path $PSScriptRoot
 
-$python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $python) {
-  $python = Get-Command py -ErrorAction SilentlyContinue
+$pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+$usePyLauncher = $false
+
+if (-not $pythonCmd) {
+  $pythonCmd = Get-Command py -ErrorAction SilentlyContinue
+  $usePyLauncher = $true
 }
 
-if (-not $python) {
-  Write-Error "未找到 Python。请先安装 Python 3.11+。"
+if (-not $pythonCmd) {
+  Write-Error "Python was not found. Please install Python 3.11+ first."
 }
 
-if ($python.Source -like "*\py.exe") {
+if ($usePyLauncher) {
   py -3 scripts/setup.py
 } else {
   python scripts/setup.py

@@ -717,11 +717,11 @@ export default function Home() {
       <section className="masthead homeMasthead homeReveal">
         <div>
           <p className="eyebrow">Digital Employee OS</p>
-          <h1>Guiwuli数字员工</h1>
+          <h1>Workflow Chat</h1>
           <p className="lede">
             励志淘汰每一个职业, 让每一个人都能成为数字员工的老板;
             <br />
-            Github: https://github.com/hepingan11/Guiwuli-Digital-Employee
+            Github: https://github.com/hepingan11/Workflow-Chat
           </p>
         </div>
         <div className="statusPanel">

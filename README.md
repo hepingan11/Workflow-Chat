@@ -169,13 +169,14 @@ copy + materials -> prompt-controlled normalization -> workflow API payload -> D
 未拉取仓库时一条命令部署：
 
 ```powershell
-iwr https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.ps1 -UseBasicParsing | iex
+$script = iwr https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.ps1 -UseBasicParsing
+[Text.Encoding]::UTF8.GetString($script.RawContentStream.ToArray()) | iex
 ```
 
 macOS / Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.sh | bash
 ```
 
 一条命令安装与基础配置：
