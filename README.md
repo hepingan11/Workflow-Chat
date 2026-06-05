@@ -166,6 +166,33 @@ copy + materials -> prompt-controlled normalization -> workflow API payload -> D
 
 ## Quick Start
 
+未拉取仓库时一条命令部署：
+
+```powershell
+iwr https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.ps1 -UseBasicParsing | iex
+```
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hepingan11/Guiwuli-Digital-Employee/main/scripts/bootstrap.sh | bash
+```
+
+一条命令安装与基础配置：
+
+```powershell
+.\setup.ps1
+```
+
+macOS / Linux:
+
+```bash
+chmod +x ./setup.sh
+./setup.sh
+```
+
+脚本支持安装依赖，并可选配置 LLM 接口、消息推送、老板设定和长期记忆配置；所有配置都可以跳过，之后在 `/settings/services` 页面继续配置。详细说明见 [一条命令安装与基础配置](docs/setup-installer.md)。
+
 API:
 
 ```powershell

@@ -291,6 +291,143 @@ h1 {
   margin-top: 24px;
 }
 
+.employeeWorkbenchShell {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+
+.employeeWorkbenchShell.has-monitor {
+  padding-left: clamp(0px, 18vw, 340px);
+}
+
+.employeeWorkbenchHero {
+  margin-bottom: 2px;
+}
+
+.employeeMonitorRail {
+  position: fixed;
+  left: 24px;
+  top: 24px;
+  z-index: 20;
+  width: min(300px, calc(18vw - 34px));
+  min-width: 230px;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgb(250 247 239 / 92%), rgb(243 238 226 / 94%)),
+    var(--panel);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  overflow: auto;
+}
+
+.employeeMonitorRail.is-active {
+  bottom: 24px;
+}
+
+.employeeMonitorRail.is-empty {
+  max-height: 220px;
+}
+
+.employeeMonitorStack {
+  display: grid;
+  gap: 14px;
+}
+
+.employeeMonitorRail .automationList {
+  margin-top: 0;
+}
+
+.employeeMonitorRail .automationCard {
+  padding: 12px;
+}
+
+.employeeMonitorRail .automationCard h3 {
+  font-size: 14px;
+}
+
+.employeeMonitorPre {
+  min-height: 260px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.employeeTopGrid,
+.employeeKnowledgeGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.employeeBoardPanel,
+.employeePromptStrip,
+.employeeWidePanel {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.employeeBoardPanel {
+  min-height: 420px;
+}
+
+.employeeBoardTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.employeeBoardTitle h2 {
+  margin: 0;
+  color: var(--accent-2);
+  font-size: 28px;
+}
+
+.employeePreviewList {
+  max-height: 640px;
+  overflow: hidden;
+}
+
+.employeePreviewCard {
+  min-height: 150px;
+}
+
+.employeePromptStrip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.employeePromptStrip h2 {
+  margin: 4px 0 0;
+  color: var(--accent-2);
+}
+
+.employeePromptStrip button {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.employeePromptEditor {
+  width: 100%;
+  min-height: 460px;
+}
+
+.employeeFullRow {
+  min-width: 0;
+}
+
+.employeeModalPanel {
+  width: min(1120px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+}
+
 .backLink {
   display: inline-flex;
   gap: 8px;
@@ -970,6 +1107,28 @@ textarea {
   color: var(--muted);
   line-height: 1.65;
   white-space: pre-wrap;
+}
+
+.flowPrompt p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.flowPrompt.is-expanded p {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.flowPrompt button {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 800;
 }
 
 .flowNextAction {
@@ -1761,10 +1920,21 @@ small {
   font-size: 13px;
 }
 
+.flowSkillSearch {
+  width: 100%;
+  margin-bottom: 10px;
+  border: 1px solid rgb(31 111 95 / 22%);
+  background: rgb(255 253 248 / 84%);
+  color: var(--ink);
+  padding: 9px 10px;
+}
+
 .flowSkillList {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  max-height: 160px;
+  overflow: auto;
 }
 
 .flowSkillChip {
@@ -1824,13 +1994,105 @@ small {
   min-height: 140px;
 }
 
+.skillFormHeader,
+.skillFormActions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.skillFormHeader {
+  justify-content: space-between;
+}
+
+.skillFormHeader strong {
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.skillFormHeader span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.skillFileUpload {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  border: 1px dashed rgb(31 111 95 / 32%);
+  background: rgb(255 253 248 / 76%);
+  padding: 12px;
+}
+
+.skillFileUpload span {
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.skillFileUpload small {
+  color: var(--muted);
+}
+
+.skillUploadChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.skillUploadChoices label {
+  display: grid;
+  gap: 6px;
+  border: 1px solid rgb(31 111 95 / 18%);
+  background: rgb(31 111 95 / 7%);
+  color: var(--accent);
+  padding: 10px;
+  font-weight: 800;
+}
+
+.skillUploadChoices input {
+  max-width: 260px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.skillPackagePreview {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgb(31 111 95 / 18%);
+  background: rgb(255 253 248 / 58%);
+  padding: 10px;
+}
+
+.skillPackagePreview strong {
+  color: var(--accent);
+}
+
+.skillPackagePreview div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.skillPackagePreview span {
+  border: 1px solid rgb(31 111 95 / 16%);
+  background: rgb(31 111 95 / 8%);
+  color: var(--muted);
+  padding: 4px 7px;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+}
+
 .skillCreateForm button {
   justify-self: start;
 }
 
 .skillGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   margin-top: 18px;
 }
@@ -1839,6 +2101,18 @@ small {
   background:
     linear-gradient(135deg, rgb(31 111 95 / 8%), transparent 44%),
     rgb(250 247 239 / 80%);
+}
+
+.skillCardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.skillCardActions button {
+  min-height: 34px;
+  padding: 7px 10px;
 }
 
 .modalPanel {
@@ -2121,7 +2395,19 @@ small {
 }
 
 @media (max-width: 1080px) {
+  .employeeWorkbenchShell {
+    padding-left: 0;
+  }
+
+  .employeeMonitorRail {
+    position: static;
+    width: auto;
+    min-width: 0;
+  }
+
   .employeeGrid,
+  .employeeTopGrid,
+  .employeeKnowledgeGrid,
   .operatorConsole,
   .settingsGrid,
   .notificationChannelGrid,

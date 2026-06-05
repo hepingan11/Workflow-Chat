@@ -277,6 +277,31 @@ def reset_successful_task_count(role_key: str) -> None:
     write_memory_compaction_state(state)
 
 
+def compact_role_memory_now(role_key: str) -> dict:
+    config = read_memory_settings()
+    now = now_iso()
+    task = AgentTaskMemoryRecord(
+        id=f"task_mem_{uuid4().hex[:12]}",
+        role_key=role_key,
+        task_id=f"manual_compaction_{uuid4().hex[:8]}",
+        task_title="手动压缩/清理长期记忆库",
+        user_input="用户手动触发当前员工知识库清理与压缩。",
+        execution_summary="已归档原始任务流水，清理失败/未压缩任务记忆，并生成压缩知识库摘要。",
+        status="completed",
+        raw_payload={"manual": True, "compacted_at": now},
+        created_at=now,
+        completed_at=now,
+    )
+    compact_role_memory(role_key, task, [], config)
+    reset_successful_task_count(role_key)
+    return {
+        "ok": True,
+        "role_key": role_key,
+        "message": "当前员工长期记忆库已清理并压缩。",
+        "compacted_at": now,
+    }
+
+
 def compact_role_memory(
     role_key: str,
     latest_task: AgentTaskMemoryRecord,
@@ -311,6 +336,7 @@ def compact_role_memory(
     if config.database_url and psycopg is not None:
         ensure_memory_store(config)
         delete_uncompressed_task_memories(role_key, config)
+        delete_failed_task_memory_records(role_key, config)
         insert_memory_record(compacted_record, config)
 
 
@@ -398,6 +424,20 @@ def delete_uncompressed_task_memories(role_key: str, config: MemoryStorageSettin
                 delete from agent_memories
                 where role_key = %s
                   and source_type = 'playbook_run'
+                """,
+                (role_key,),
+            )
+        connection.commit()
+
+
+def delete_failed_task_memory_records(role_key: str, config: MemoryStorageSettings) -> None:
+    with psycopg.connect(config.database_url) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                delete from agent_task_memories
+                where role_key = %s
+                  and status <> 'completed'
                 """,
                 (role_key,),
             )

@@ -14,7 +14,7 @@ export default async function EmployeePage({ params }: PageProps) {
   const { key } = await params;
   const employee = getEmployee(key);
 
-  if (!employee || employee.key === "operator") {
+  if (!employee || ["operator", "programmer", "customer_support", "product_manager"].includes(employee.key)) {
     notFound();
   }
 

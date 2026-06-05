@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, RefreshCcw } from "lucide-react";
+import { Archive, Brain, RefreshCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 
 type AgentMemoryRecord = {
@@ -68,6 +68,29 @@ export function AgentMemoryPanel({ roleKey, roleName }: AgentMemoryPanelProps) {
     }
   }
 
+  async function compactMemoryNow() {
+    const confirmed = window.confirm(`确定要立即清理并压缩 ${roleName} 的长期记忆库吗？原始流水会被归档，失败任务记忆会被清理。`);
+    if (!confirmed) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/agents/${roleKey}/memories/compact`, {
+        method: "POST",
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) {
+        throw new Error(data.detail ?? data.message ?? "compact memories failed");
+      }
+      setStatus(data.message ?? "长期记忆库已清理并压缩");
+      await loadMemory();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "长期记忆库压缩失败");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   const grouped = memory.memories.reduce<Record<string, AgentMemoryRecord[]>>((acc, item) => {
     acc[item.kind] = [...(acc[item.kind] ?? []), item];
     return acc;
@@ -82,6 +105,10 @@ export function AgentMemoryPanel({ roleKey, roleName }: AgentMemoryPanelProps) {
           <p>{status}</p>
         </div>
         <div className="toolActions">
+          <button type="button" onClick={compactMemoryNow} disabled={isLoading}>
+            <Archive aria-hidden="true" />
+            立即压缩/清理
+          </button>
           <button type="button" onClick={() => loadMemory()} disabled={isLoading}>
             <RefreshCcw aria-hidden="true" />
             刷新
@@ -142,7 +169,7 @@ export function AgentMemoryPanel({ roleKey, roleName }: AgentMemoryPanelProps) {
         <p className="toolEmpty">这个员工暂时还没有数据库记忆。任务完成后会自动复盘并写入长期记忆。</p>
       )}
 
-      <details className="memoryMarkdownPreview">
+      <details className="memoryMarkdownPreview" open>
         <summary>查看 Markdown 记忆上下文</summary>
         <pre>{memory.markdown_context || "暂无 Markdown 记忆。每个角色会写入自己独立的 memories 目录。"}</pre>
       </details>

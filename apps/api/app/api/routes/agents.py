@@ -4,9 +4,9 @@ from app.schemas.agent import AgentProfile
 from app.schemas.memory import AgentMemoryRecord, MemoryCreateRequest, MemorySearchResult
 from app.schemas.operator import OperatorPromptConfig, OperatorPromptUpdate
 from app.schemas.agent_tools import AgentToolExecutePayload, AgentToolExecuteResponse, AgentToolListResponse
-from app.schemas.skills import AgentSkillRecord, SkillCreateRequest, SkillSearchResult
-from app.services.agent_memory import create_role_memory, ensure_memory_store, retrieve_role_memory
-from app.services.agent_skills import create_role_skill, retrieve_role_skills
+from app.schemas.skills import AgentSkillRecord, SkillCreateRequest, SkillSearchResult, SkillUpdateRequest
+from app.services.agent_memory import compact_role_memory_now, create_role_memory, ensure_memory_store, retrieve_role_memory
+from app.services.agent_skills import create_role_skill, delete_role_skill, retrieve_role_skills, update_role_skill
 from app.services.agent_tools import execute_agent_tool, list_agent_tools
 from app.services.agent_registry import get_agent, list_agents
 from app.services.prompt_config import read_agent_prompt, write_agent_prompt
@@ -64,6 +64,14 @@ def create_agent_memory(agent_key: str, payload: MemoryCreateRequest) -> AgentMe
     return create_role_memory(agent_key, payload)
 
 
+@router.post("/{agent_key}/memories/compact")
+def compact_agent_memories(agent_key: str) -> dict:
+    agent = get_agent(agent_key)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return compact_role_memory_now(agent_key)
+
+
 @router.get("/{agent_key}/skills", response_model=SkillSearchResult)
 def search_agent_skills(agent_key: str, q: str = "", limit: int = 12) -> SkillSearchResult:
     agent = get_agent(agent_key)
@@ -78,6 +86,28 @@ def create_agent_skill(agent_key: str, payload: SkillCreateRequest) -> AgentSkil
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return create_role_skill(agent_key, payload)
+
+
+@router.put("/{agent_key}/skills/{skill_id}", response_model=AgentSkillRecord)
+def update_agent_skill(agent_key: str, skill_id: str, payload: SkillUpdateRequest) -> AgentSkillRecord:
+    agent = get_agent(agent_key)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    skill = update_role_skill(agent_key, skill_id, payload)
+    if skill is None:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return skill
+
+
+@router.delete("/{agent_key}/skills/{skill_id}")
+def delete_agent_skill(agent_key: str, skill_id: str) -> dict[str, bool]:
+    agent = get_agent(agent_key)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    deleted = delete_role_skill(agent_key, skill_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return {"ok": True}
 
 
 @router.post("/memory-store/init")

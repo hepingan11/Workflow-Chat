@@ -264,6 +264,43 @@ function getStepConnections(step: ParsedPlaybook["steps"][number], playbook: Par
   return connections;
 }
 
+function CollapsiblePrompt({
+  isExpanded,
+  label,
+  onToggle,
+  text,
+}: {
+  isExpanded: boolean;
+  label: string;
+  onToggle: () => void;
+  text: string;
+}) {
+  const contentRef = useRef<HTMLParagraphElement | null>(null);
+  const [canExpand, setCanExpand] = useState(false);
+
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) {
+      return;
+    }
+    const computed = window.getComputedStyle(content);
+    const lineHeight = Number.parseFloat(computed.lineHeight) || 24;
+    setCanExpand(content.scrollHeight > lineHeight * 5 + 2);
+  }, [text]);
+
+  return (
+    <div className={`flowPrompt${isExpanded ? " is-expanded" : ""}`}>
+      <strong>{label}</strong>
+      <p ref={contentRef}>{text}</p>
+      {canExpand ? (
+        <button type="button" onClick={onToggle}>
+          {isExpanded ? "收起" : "展开完整内容"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export default function Home() {
   const shellRef = useRef<HTMLElement | null>(null);
   const parseButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -284,6 +321,8 @@ export default function Home() {
   const [allTools, setAllTools] = useState<ToolSuggestion[]>([]);
   const [roleTools, setRoleTools] = useState<ToolSuggestion[]>([]);
   const [skillsByRole, setSkillsByRole] = useState<Record<string, AgentSkillRecord[]>>({});
+  const [expandedPromptStepIds, setExpandedPromptStepIds] = useState<Record<string, boolean>>({});
+  const [skillSearchByStepId, setSkillSearchByStepId] = useState<Record<string, string>>({});
 
   const filteredEmployees = useMemo(() => {
     if (!mentionRange || suggestionMode !== "employee") {
@@ -659,6 +698,20 @@ export default function Home() {
     });
   }
 
+  function togglePromptExpanded(stepId: string) {
+    setExpandedPromptStepIds((current) => ({ ...current, [stepId]: !current[stepId] }));
+  }
+
+  function getFilteredStepSkills(step: ParsedPlaybook["steps"][number], playbook: ParsedPlaybook) {
+    const roleKey = getStepRoleKey(step, playbook);
+    const query = (skillSearchByStepId[step.id] ?? "").trim().toLowerCase();
+    const skills = skillsByRole[roleKey] ?? [];
+    if (!query) {
+      return skills;
+    }
+    return skills.filter((skill) => skill.title.toLowerCase().includes(query));
+  }
+
   return (
     <main className="shell homeShell" ref={shellRef}>
       <section className="masthead homeMasthead homeReveal">
@@ -851,6 +904,10 @@ export default function Home() {
               {parsedPlaybook.steps.map((step, index) => {
                 const nextAction = getStepNextAction(step, parsedPlaybook);
                 const connections = getStepConnections(step, parsedPlaybook);
+                const promptText = getStepPrompt(step);
+                const isPromptExpanded = Boolean(expandedPromptStepIds[step.id]);
+                const roleSkills = skillsByRole[getStepRoleKey(step, parsedPlaybook)] ?? [];
+                const filteredStepSkills = getFilteredStepSkills(step, parsedPlaybook);
                 return (
                   <article className={`flowNode ${getStepKindClass(step)}`} key={step.id}>
                     <div className="flowNodeIndex">
@@ -882,17 +939,30 @@ export default function Home() {
                         </span>
                       </div>
 
-                      <div className="flowPrompt">
-                        <strong>{step.type === "human_approval" ? "确认消息" : step.type === "message_push" ? "推送内容来源" : "执行提示词/输入"}</strong>
-                        <p>{getStepPrompt(step)}</p>
-                      </div>
+                      <CollapsiblePrompt
+                        isExpanded={isPromptExpanded}
+                        label={step.type === "human_approval" ? "确认消息" : step.type === "message_push" ? "推送内容来源" : "执行提示词/输入"}
+                        onToggle={() => togglePromptExpanded(step.id)}
+                        text={promptText}
+                      />
 
                       <div className="flowSkillPicker">
                         <strong>节点 Skills</strong>
                         <p>当前节点角色：{getRoleName(getStepRoleKey(step, parsedPlaybook))}</p>
+                        <input
+                          className="flowSkillSearch"
+                          value={skillSearchByStepId[step.id] ?? ""}
+                          onChange={(event) =>
+                            setSkillSearchByStepId((current) => ({
+                              ...current,
+                              [step.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="按 Skill 名称搜索"
+                        />
                         <div className="flowSkillList">
-                          {(skillsByRole[getStepRoleKey(step, parsedPlaybook)] ?? []).length ? (
-                            (skillsByRole[getStepRoleKey(step, parsedPlaybook)] ?? []).map((skill) => {
+                          {filteredStepSkills.length ? (
+                            filteredStepSkills.map((skill) => {
                               const checked = getSelectedSkillIds(step).includes(skill.id);
                               return (
                                 <label className="flowSkillChip" key={skill.id}>
@@ -903,7 +973,9 @@ export default function Home() {
                               );
                             })
                           ) : (
-                            <span className="flowSkillEmpty">该角色暂无 Skills，可到员工管理页人工上传。</span>
+                            <span className="flowSkillEmpty">
+                              {roleSkills.length ? "没有匹配的 Skill，请换个名称关键词。" : "该角色暂无 Skills，可到员工管理页人工上传。"}
+                            </span>
                           )}
                         </div>
                       </div>
