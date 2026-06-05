@@ -1,6 +1,6 @@
 # Workflow Chat
 
-Workflow Chat 是一个开源 Digital Employee OS 原型。
+Workflow Chat 是一个开源 Digital Employee OS 原型，Openclaw与Codex、Dify等的结合，多角色协作与LLM节点自动编排---下一代开源数字人系统，让每个人都能当老板。
 
 这个项目最主要的不是开发具体操作，而是**控制操作**：数字员工负责理解目标、整理输入、调用工具/工作流 API、等待人工审批、记录执行过程，而不是绕过控制层直接做高风险动作。
 
@@ -31,7 +31,78 @@ Workflow Chat 是一个开源 Digital Employee OS 原型。
 
 ![](https://img2-hepinan.oss-cn-beijing.aliyuncs.com/picgo/20260531034751.png)
 
-![](https://img-hepingan.oss-cn-hangzhou.aliyuncs.com/page1/20260601165536754.png)
+<img src="https://img-hepingan.oss-cn-hangzhou.aliyuncs.com/page1/20260601165536754.png" style="zoom:50%;" />
+
+## Quick Start
+
+未拉取仓库时一条命令部署：
+
+```powershell
+$script = iwr https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.ps1 -UseBasicParsing
+[Text.Encoding]::UTF8.GetString($script.RawContentStream.ToArray()) | iex
+```
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.sh | bash
+```
+
+一条命令安装与基础配置：
+
+```powershell
+.\setup.ps1
+```
+
+macOS / Linux:
+
+```bash
+chmod +x ./setup.sh
+./setup.sh
+```
+
+脚本支持安装依赖，并可选配置 LLM 接口、消息推送、老板设定和长期记忆配置；所有配置都可以跳过，之后在 `/settings/services` 页面继续配置。详细说明见 [一条命令安装与基础配置](docs/setup-installer.md)。
+
+重复执行远程 bootstrap 脚本时会自动检测当前安装目录和远端最新版：如果本地落后会提示是否更新，并只使用 `git pull --ff-only` 做安全更新；如果存在本地修改或分支分叉，不会强制覆盖文件。本地 setup 重复执行时会提示已有配置，并默认保留记忆库、skills、playbook、运行日志等数据。
+
+API:
+
+```powershell
+cd apps/api
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Web:
+
+```powershell
+cd apps/web
+npm install
+npm run dev
+```
+
+Weixin Bot:
+
+```powershell
+cd integrations/weixinProxy
+npm install
+npm run login
+npm run listen
+npm run send -- <user_id> <text>
+npm run repl
+```
+
+后端会在需要微信登录、发送或监听时自动检测 `integrations/weixinProxy` 的本地依赖；如果未安装，会在该目录执行 `npm install`。`/settings/services` 中提供网页扫码入口，扫码成功后会保存 `userId`。业务消息发送会通过 `integrations/weixinProxy/src/workflow-chat-send-text.js` 读取 UTF-8 文本文件发送，避免多行消息被命令行参数截断。
+
+微信业务推送生效前需要完成：
+
+1. 在 `/settings/services` 选择微信 Bot 并扫码登录。
+2. 点击“启动监听”，让 `integrations/weixinProxy` 接收消息。
+3. 用接收通知的微信号给 Bot 发一条消息，生成该会话的 `context_token`。
+4. 点击“同步目标”，保存真正的推送目标 `target_user_id`。
+5. 点击“测试发送”，确认后续 `message_push` 和 `human_approval` 节点可以真正推送到微信。
 
 ## MVP后要解决什么？
 
@@ -163,85 +234,6 @@ copy + materials -> prompt-controlled normalization -> workflow API payload -> D
 - `/employees/{key}`：其他员工管理占位页
 - `/settings/services`：模型服务配置
 - `/settings/tools`：工具配置
-
-## Quick Start
-
-未拉取仓库时一条命令部署：
-
-```powershell
-$script = iwr https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.ps1 -UseBasicParsing
-[Text.Encoding]::UTF8.GetString($script.RawContentStream.ToArray()) | iex
-```
-
-macOS / Linux:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/hepingan11/Workflow-Chat/main/scripts/bootstrap.sh | bash
-```
-
-一条命令安装与基础配置：
-
-```powershell
-.\setup.ps1
-```
-
-macOS / Linux:
-
-```bash
-chmod +x ./setup.sh
-./setup.sh
-```
-
-脚本支持安装依赖，并可选配置 LLM 接口、消息推送、老板设定和长期记忆配置；所有配置都可以跳过，之后在 `/settings/services` 页面继续配置。详细说明见 [一条命令安装与基础配置](docs/setup-installer.md)。
-
-API:
-
-```powershell
-cd apps/api
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
-```
-
-Worker:
-
-```powershell
-cd apps/worker
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .
-python -m worker.main
-```
-
-Web:
-
-```powershell
-cd apps/web
-npm install
-npm run dev
-```
-
-Weixin Bot:
-
-```powershell
-cd integrations/weixinProxy
-npm install
-npm run login
-npm run listen
-npm run send -- <user_id> <text>
-npm run repl
-```
-
-后端会在需要微信登录、发送或监听时自动检测 `integrations/weixinProxy` 的本地依赖；如果未安装，会在该目录执行 `npm install`。`/settings/services` 中提供网页扫码入口，扫码成功后会保存 `userId`。业务消息发送会通过 `integrations/weixinProxy/src/workflow-chat-send-text.js` 读取 UTF-8 文本文件发送，避免多行消息被命令行参数截断。
-
-微信业务推送生效前需要完成：
-
-1. 在 `/settings/services` 选择微信 Bot 并扫码登录。
-2. 点击“启动监听”，让 `integrations/weixinProxy` 接收消息。
-3. 用接收通知的微信号给 Bot 发一条消息，生成该会话的 `context_token`。
-4. 点击“同步目标”，保存真正的推送目标 `target_user_id`。
-5. 点击“测试发送”，确认后续 `message_push` 和 `human_approval` 节点可以真正推送到微信。
 
 ## 本地配置
 

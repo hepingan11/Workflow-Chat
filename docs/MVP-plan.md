@@ -481,7 +481,6 @@ digital-employee-os/
 ├── apps/
 │   ├── web/                 # 控制台
 │   ├── gateway/             # 消息入口：Telegram/Slack/QQ/Discord
-│   └── worker/              # Agent 执行进程
 │
 ├── packages/
 │   ├── agent-runtime/       # Agent 执行循环

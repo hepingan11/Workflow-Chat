@@ -15,6 +15,7 @@ import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from shutil import which
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,28 +26,84 @@ ROLE_KEYS = ["programmer", "customer_support", "product_manager", "operator", "c
 def main() -> int:
     print("\nWorkflow Chat setup")
     print("=" * 48)
-    print("所有配置都可以直接回车跳过，之后到 Web 页面 /settings/services 再配置。")
+    print("All configuration steps are optional. You can skip them now and configure later in /settings/services.")
 
+    summarize_existing_installation()
     ensure_env_file()
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    if ask_yes("是否安装/更新本地依赖？", default=True):
+    if ask_yes("Install or update local dependencies", default=True):
         install_dependencies()
 
-    if ask_yes("是否现在进行基础配置？", default=True):
-        configure_model()
-        configure_boss()
-        configure_memory()
-        configure_notification()
+    if ask_yes("Configure basic services now", default=True):
+        if warn_before_overwriting_configs():
+            configure_model()
+            configure_boss()
+            configure_memory()
+            configure_notification()
     else:
         write_default_configs()
 
-    print("\n完成。常用启动命令：")
+    print("\nSetup complete. Common start commands:")
     print("API:  .\\.venv\\Scripts\\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000  (Windows)")
     print("API:  ./.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000      (macOS/Linux)")
     print("Web:  cd apps/web && npm run dev")
-    print("\n配置文件保存在 .workflow-chat/，可继续在 Web 的 /settings/services 修改。")
+    print("\nLocal config is stored in .workflow-chat/. You can edit it later in /settings/services.")
     return 0
+
+
+def summarize_existing_installation() -> None:
+    checks = [
+        (ROOT / ".env", ".env"),
+        (ROOT / ".venv", ".venv"),
+        (ROOT / "apps/web/node_modules", "apps/web/node_modules"),
+        (CONFIG_DIR / "model-config.json", ".workflow-chat/model-config.json"),
+        (CONFIG_DIR / "notification-config.json", ".workflow-chat/notification-config.json"),
+        (CONFIG_DIR / "boss-config.json", ".workflow-chat/boss-config.json"),
+        (CONFIG_DIR / "memory-storage-config.json", ".workflow-chat/memory-storage-config.json"),
+        (CONFIG_DIR / "memories", ".workflow-chat/memories"),
+        (CONFIG_DIR / "skills", ".workflow-chat/skills"),
+        (CONFIG_DIR / "skill-packages", ".workflow-chat/skill-packages"),
+    ]
+    existing = [label for path, label in checks if path.exists()]
+    if not existing:
+        print("No previous local setup was detected.")
+        return
+
+    print("\nExisting local setup detected:")
+    for label in existing:
+        print(f"- {label}")
+    print("Safe rerun behavior:")
+    print("- Dependencies may be installed or updated again.")
+    print("- Existing .env is kept.")
+    print("- Default config files are only created when missing.")
+    print("- If you choose service configuration now, related JSON config files will be rewritten.")
+    print("- Memories, skills, playbooks, and run logs are not deleted by this setup script.")
+
+
+def warn_before_overwriting_configs() -> bool:
+    existing_configs = [
+        path.name
+        for path in [
+            CONFIG_DIR / "model-config.json",
+            CONFIG_DIR / "notification-config.json",
+            CONFIG_DIR / "boss-config.json",
+            CONFIG_DIR / "memory-storage-config.json",
+        ]
+        if path.exists()
+    ]
+    if not existing_configs:
+        return True
+
+    print("\nConfiguration files already exist:")
+    for name in existing_configs:
+        print(f"- .workflow-chat/{name}")
+    print("Choosing this step rewrites the selected service configuration files.")
+    if ask_yes("Continue service configuration", default=False):
+        return True
+
+    print("Skipped service configuration. Existing config files were kept.")
+    return False
 
 
 def install_dependencies() -> None:
@@ -258,8 +315,22 @@ def write_json(filename: str, data: dict) -> None:
 
 
 def run(command: list[str], cwd: Path) -> None:
-    print(f"\n$ {' '.join(command)}")
-    subprocess.run(command, cwd=str(cwd), check=True)
+    resolved = [resolve_command(command[0]), *command[1:]]
+    print(f"\n$ {' '.join(resolved)}")
+    subprocess.run(resolved, cwd=str(cwd), check=True)
+
+
+def resolve_command(command: str) -> str:
+    if not is_windows() or "\\" in command or "/" in command:
+        return command
+    candidates = [command]
+    if not command.lower().endswith((".cmd", ".exe", ".bat")):
+        candidates.extend([f"{command}.cmd", f"{command}.exe", f"{command}.bat"])
+    for candidate in candidates:
+        resolved = which(candidate)
+        if resolved:
+            return resolved
+    return command
 
 
 def ask(prompt: str, default: str = "") -> str:
