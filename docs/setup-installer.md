@@ -111,12 +111,20 @@ cd apps/web
 npm run dev
 ```
 
-## PostgreSQL 说明
+## 长期记忆说明
 
-PostgreSQL 可以跳过。不配置 PostgreSQL 时，长期记忆会写入本地 Markdown：
+长期记忆使用本地 SQLite + Markdown，无需任何外部数据库服务。
+
+Markdown 是可读、可人工编辑的记忆主存：
 
 ```text
 .workflow-chat/memories
 ```
 
-配置 PostgreSQL 后，系统会同时写入 PostgreSQL 和 Markdown。
+SQLite 是本地单文件结构化索引，提供按相关度排序的检索：
+
+```text
+.workflow-chat/memory.db
+```
+
+两者路径都可以在安装脚本或 `/settings/services` 页面调整。

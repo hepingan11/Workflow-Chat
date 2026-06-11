@@ -196,14 +196,13 @@ def configure_boss() -> None:
 
 def configure_memory() -> None:
     print("\n[3/4] 长期记忆配置")
+    print("长期记忆使用本地 SQLite + Markdown，无需任何外部数据库服务。")
     markdown_dir = ask("Markdown 记忆目录", default=".workflow-chat/memories")
-    database_url = ""
-    if ask_yes("是否配置 PostgreSQL？不配置也会使用本地 Markdown", default=False):
-        database_url = ask_secret("PostgreSQL Database URL，例如 postgresql://user:password@host:port/db")
+    sqlite_path = ask("SQLite 数据库路径", default=".workflow-chat/memory.db")
     write_json(
         "memory-storage-config.json",
         {
-            "database_url": database_url,
+            "sqlite_path": sqlite_path,
             "markdown_dir": markdown_dir,
             "updated_at": now(),
         },
@@ -252,7 +251,7 @@ def configure_notification() -> None:
 def write_default_configs() -> None:
     ensure_json("model-config.json", default_model_settings())
     ensure_json("boss-config.json", {"preferred_name": "", "role_profile": "", "updated_at": now()})
-    ensure_json("memory-storage-config.json", {"database_url": "", "markdown_dir": ".workflow-chat/memories", "updated_at": now()})
+    ensure_json("memory-storage-config.json", {"sqlite_path": ".workflow-chat/memory.db", "markdown_dir": ".workflow-chat/memories", "updated_at": now()})
     ensure_json("notification-config.json", default_notification_settings())
 
 

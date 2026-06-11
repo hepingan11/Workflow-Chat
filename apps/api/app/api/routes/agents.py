@@ -112,7 +112,7 @@ def delete_agent_skill(agent_key: str, skill_id: str) -> dict[str, bool]:
 
 @router.post("/memory-store/init")
 def init_memory_store() -> dict[str, bool]:
-    return {"postgres_enabled": ensure_memory_store()}
+    return {"sqlite_enabled": ensure_memory_store()}
 
 
 @router.post("/{agent_key}/tools/{tool_id}/execute", response_model=AgentToolExecuteResponse)

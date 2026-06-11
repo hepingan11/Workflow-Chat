@@ -19,7 +19,7 @@ def read_memory_settings() -> MemoryStorageSettings:
     path = get_memory_settings_path()
     if not path.exists():
         config = MemoryStorageSettings(
-            database_url=settings.database_url,
+            sqlite_path=settings.memory_db_path,
             markdown_dir=settings.memory_markdown_dir,
         )
         write_memory_settings(config)
@@ -27,6 +27,8 @@ def read_memory_settings() -> MemoryStorageSettings:
 
     data = json.loads(path.read_text(encoding="utf-8"))
     config = MemoryStorageSettings(**data)
+    if not config.sqlite_path:
+        config.sqlite_path = settings.memory_db_path
     if not config.markdown_dir:
         config.markdown_dir = settings.memory_markdown_dir
     return config
@@ -38,8 +40,8 @@ def read_public_memory_settings() -> PublicMemoryStorageSettings:
 
 def update_memory_settings(payload: MemoryStorageSettings) -> PublicMemoryStorageSettings:
     existing = read_memory_settings()
-    if not payload.database_url:
-        payload.database_url = existing.database_url
+    if not payload.sqlite_path:
+        payload.sqlite_path = existing.sqlite_path or settings.memory_db_path
     if not payload.markdown_dir:
         payload.markdown_dir = existing.markdown_dir or settings.memory_markdown_dir
     saved = write_memory_settings(payload)
@@ -57,45 +59,30 @@ def write_memory_settings(config: MemoryStorageSettings) -> MemoryStorageSetting
 
 def test_memory_storage_connection(payload: MemoryStorageSettings | None = None) -> MemoryStorageTestResponse:
     config = payload or read_memory_settings()
-    if not config.database_url:
-        return MemoryStorageTestResponse(
-            ok=False,
-            message="PostgreSQL 测试失败：请先填写 Database URL。",
-            detail={"missing_fields": ["database_url"]},
-        )
+    if not config.sqlite_path:
+        config.sqlite_path = settings.memory_db_path
 
     try:
-        from app.services.agent_memory import ensure_memory_store
+        from app.services.agent_memory import ensure_memory_store, get_memory_db_path
 
         ensured = ensure_memory_store(config)
+        db_path = get_memory_db_path(config)
         return MemoryStorageTestResponse(
             ok=ensured,
-            message="PostgreSQL 记忆库连接成功，数据表已初始化。" if ensured else "PostgreSQL 记忆库未启用。",
-            detail={"postgres_enabled": ensured},
+            message=f"SQLite 记忆库连接成功，数据表已初始化：{db_path}",
+            detail={"sqlite_enabled": ensured, "db_path": str(db_path)},
         )
     except Exception as exc:
         return MemoryStorageTestResponse(
             ok=False,
-            message=f"PostgreSQL 测试失败：{exc}",
+            message=f"SQLite 测试失败：{exc}",
             detail={"error": str(exc)},
         )
 
 
 def to_public_memory_settings(config: MemoryStorageSettings) -> PublicMemoryStorageSettings:
     return PublicMemoryStorageSettings(
-        database_url_preview=mask_database_url(config.database_url),
-        has_database_url=bool(config.database_url),
+        sqlite_path=config.sqlite_path or settings.memory_db_path,
         markdown_dir=config.markdown_dir,
         updated_at=config.updated_at,
     )
-
-
-def mask_database_url(database_url: str) -> str:
-    if not database_url:
-        return ""
-    if "@" not in database_url:
-        return database_url[:16] + "***"
-    prefix, suffix = database_url.rsplit("@", 1)
-    scheme, _, credentials = prefix.partition("://")
-    user = credentials.split(":", 1)[0]
-    return f"{scheme}://{user}:***@{suffix}"

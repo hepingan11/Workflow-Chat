@@ -1,15 +1,10 @@
 import json
 import re
+import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
-
-try:
-    import psycopg
-    from psycopg.rows import dict_row
-except ImportError:  # pragma: no cover - keeps Markdown memory usable before DB deps are installed.
-    psycopg = None
-    dict_row = None
 
 from app.core.config import find_project_root, settings
 from app.schemas.memory import (
@@ -28,15 +23,38 @@ from app.services.prompt_config import get_config_dir
 MEMORY_COMPRESSION_INTERVAL = 10
 
 
+# ---------------------------------------------------------------------------
+# SQLite structured index
+#
+# Markdown remains the human-readable source of truth; SQLite is an always-on
+# structured index that provides ranked top-N retrieval. No external service is
+# required — the database is a single file under the local config directory.
+# ---------------------------------------------------------------------------
+
+
+def get_memory_db_path(config: MemoryStorageSettings | None = None) -> Path:
+    config = config or read_memory_settings()
+    raw = (config.sqlite_path or settings.memory_db_path).strip()
+    path = Path(raw)
+    if not path.is_absolute():
+        path = find_project_root() / path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def connect_memory_db(config: MemoryStorageSettings | None = None) -> sqlite3.Connection:
+    connection = sqlite3.connect(str(get_memory_db_path(config)), check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("pragma journal_mode=WAL")
+    connection.execute("pragma busy_timeout=5000")
+    return connection
+
+
 def ensure_memory_store(config: MemoryStorageSettings | None = None) -> bool:
     config = config or read_memory_settings()
-    if not config.database_url:
-        return False
-    if psycopg is None:
-        raise RuntimeError("psycopg is required when DATABASE_URL is configured")
-    with psycopg.connect(config.database_url) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
+    with closing(connect_memory_db(config)) as connection:
+        with connection:
+            connection.executescript(
                 """
                 create table if not exists agent_memories (
                     id text primary key,
@@ -47,31 +65,17 @@ def ensure_memory_store(config: MemoryStorageSettings | None = None) -> bool:
                     content text not null,
                     source_type text not null default 'manual',
                     source_id text,
-                    tags jsonb not null default '[]'::jsonb,
+                    tags text not null default '[]',
                     importance integer not null default 3,
                     markdown_path text,
-                    metadata jsonb not null default '{}'::jsonb,
-                    created_at timestamptz not null,
-                    updated_at timestamptz not null
-                )
-                """
-            )
-            cursor.execute(
-                """
+                    metadata text not null default '{}',
+                    created_at text not null,
+                    updated_at text not null
+                );
+
                 create index if not exists idx_agent_memories_role_kind
-                on agent_memories(role_key, kind)
-                """
-            )
-            cursor.execute(
-                """
-                create index if not exists idx_agent_memories_search
-                on agent_memories using gin (
-                    to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, ''))
-                )
-                """
-            )
-            cursor.execute(
-                """
+                    on agent_memories(role_key, kind);
+
                 create table if not exists agent_task_memories (
                     id text primary key,
                     role_key text not null,
@@ -80,49 +84,67 @@ def ensure_memory_store(config: MemoryStorageSettings | None = None) -> bool:
                     user_input text not null default '',
                     execution_summary text not null default '',
                     status text not null default '',
-                    raw_payload jsonb not null default '{}'::jsonb,
-                    created_at timestamptz not null,
-                    completed_at timestamptz
-                )
-                """
-            )
-            cursor.execute(
-                """
+                    raw_payload text not null default '{}',
+                    created_at text not null,
+                    completed_at text
+                );
+
                 create index if not exists idx_agent_task_memories_role_task
-                on agent_task_memories(role_key, task_id)
+                    on agent_task_memories(role_key, task_id);
                 """
             )
-        connection.commit()
     return True
+
+
+def search_role_memories(
+    role_key: str,
+    query: str,
+    limit: int,
+    config: MemoryStorageSettings | None = None,
+) -> list[AgentMemoryRecord]:
+    config = config or read_memory_settings()
+    tokens = [token for token in re.split(r"\s+", (query or "").strip()) if token]
+    with closing(connect_memory_db(config)) as connection:
+        if not tokens:
+            rows = connection.execute(
+                """
+                select * from agent_memories
+                where role_key = ?
+                order by importance desc, updated_at desc
+                limit ?
+                """,
+                (role_key, limit),
+            ).fetchall()
+            return [row_to_memory_record(row) for row in rows]
+
+        score_terms: list[str] = []
+        params: list[object] = []
+        for token in tokens:
+            like = f"%{token}%"
+            # Weighted relevance: title matches outrank summary, which outrank body.
+            score_terms.append("((title like ?) * 3 + (summary like ?) * 2 + (content like ?))")
+            params.extend([like, like, like])
+        score_expr = " + ".join(score_terms)
+        sql = f"""
+            select *, ({score_expr}) as score
+            from agent_memories
+            where role_key = ?
+            order by score desc, importance desc, updated_at desc
+            limit ?
+        """
+        params.extend([role_key, limit])
+        rows = connection.execute(sql, params).fetchall()
+
+    matched = [row for row in rows if (row["score"] or 0) > 0]
+    selected = matched or rows[:limit]
+    return [row_to_memory_record(row) for row in selected]
 
 
 def retrieve_role_memory(role_key: str, query: str, limit: int = 8) -> MemorySearchResult:
     config = read_memory_settings()
     markdown_context = read_role_memory_markdown(role_key)
-    memories: list[AgentMemoryRecord] = []
-    if config.database_url:
-        ensure_memory_store(config)
-        if psycopg is None:
-            return MemorySearchResult(memories=memories, markdown_context=markdown_context)
-        with psycopg.connect(config.database_url, row_factory=dict_row) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    select *
-                    from agent_memories
-                    where role_key = %s
-                    order by
-                        ts_rank(
-                            to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(summary, '') || ' ' || coalesce(content, '')),
-                            plainto_tsquery('simple', %s)
-                        ) desc,
-                        importance desc,
-                        updated_at desc
-                    limit %s
-                    """,
-                    (role_key, query or role_key, limit),
-                )
-                memories = [row_to_memory_record(row) for row in cursor.fetchall()]
+    ensure_memory_store(config)
+    memories = search_role_memories(role_key, query, limit, config)
     return MemorySearchResult(memories=memories, markdown_context=markdown_context)
 
 
@@ -146,9 +168,8 @@ def create_role_memory(role_key: str, payload: MemoryCreateRequest) -> AgentMemo
     )
     record.markdown_path = append_memory_markdown(record)
     config = read_memory_settings()
-    if config.database_url:
-        ensure_memory_store(config)
-        insert_memory_record(record, config)
+    ensure_memory_store(config)
+    insert_memory_record(record, config)
     return record
 
 
@@ -161,11 +182,10 @@ def record_completed_run_memory(run: PlaybookRun) -> TaskReflectionResult | None
     append_task_markdown(task, memories)
 
     config = read_memory_settings()
-    if config.database_url:
-        ensure_memory_store(config)
-        insert_task_record(task, config)
-        for memory in memories:
-            insert_memory_record(memory, config)
+    ensure_memory_store(config)
+    insert_task_record(task, config)
+    for memory in memories:
+        insert_memory_record(memory, config)
 
     if increment_successful_task_count(run.role_key) >= MEMORY_COMPRESSION_INTERVAL:
         compact_role_memory(run.role_key, task, memories, config)
@@ -333,11 +353,10 @@ def compact_role_memory(
         updated_at=compacted_at,
     )
 
-    if config.database_url and psycopg is not None:
-        ensure_memory_store(config)
-        delete_uncompressed_task_memories(role_key, config)
-        delete_failed_task_memory_records(role_key, config)
-        insert_memory_record(compacted_record, config)
+    ensure_memory_store(config)
+    delete_uncompressed_task_memories(role_key, config)
+    delete_failed_task_memory_records(role_key, config)
+    insert_memory_record(compacted_record, config)
 
 
 def collect_raw_memory_sections(role_dir: Path) -> dict[str, str]:
@@ -417,31 +436,29 @@ def archive_raw_memory_files(role_dir: Path, compacted_at: str) -> None:
 
 
 def delete_uncompressed_task_memories(role_key: str, config: MemoryStorageSettings) -> None:
-    with psycopg.connect(config.database_url) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
+    with closing(connect_memory_db(config)) as connection:
+        with connection:
+            connection.execute(
                 """
                 delete from agent_memories
-                where role_key = %s
+                where role_key = ?
                   and source_type = 'playbook_run'
                 """,
                 (role_key,),
             )
-        connection.commit()
 
 
 def delete_failed_task_memory_records(role_key: str, config: MemoryStorageSettings) -> None:
-    with psycopg.connect(config.database_url) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
+    with closing(connect_memory_db(config)) as connection:
+        with connection:
+            connection.execute(
                 """
                 delete from agent_task_memories
-                where role_key = %s
+                where role_key = ?
                   and status <> 'completed'
                 """,
                 (role_key,),
             )
-        connection.commit()
 
 
 def summarize_run(run: PlaybookRun) -> str:
@@ -557,15 +574,15 @@ def append_markdown(path: Path, content: str) -> None:
 
 def insert_memory_record(record: AgentMemoryRecord, config: MemoryStorageSettings | None = None) -> None:
     config = config or read_memory_settings()
-    with psycopg.connect(config.database_url) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
+    with closing(connect_memory_db(config)) as connection:
+        with connection:
+            connection.execute(
                 """
                 insert into agent_memories (
                     id, role_key, kind, title, summary, content, source_type, source_id,
                     tags, importance, markdown_path, metadata, created_at, updated_at
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s::jsonb, %s, %s)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict (id) do nothing
                 """,
                 (
@@ -585,20 +602,19 @@ def insert_memory_record(record: AgentMemoryRecord, config: MemoryStorageSetting
                     record.updated_at,
                 ),
             )
-        connection.commit()
 
 
 def insert_task_record(record: AgentTaskMemoryRecord, config: MemoryStorageSettings | None = None) -> None:
     config = config or read_memory_settings()
-    with psycopg.connect(config.database_url) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
+    with closing(connect_memory_db(config)) as connection:
+        with connection:
+            connection.execute(
                 """
                 insert into agent_task_memories (
                     id, role_key, task_id, task_title, user_input, execution_summary,
                     status, raw_payload, created_at, completed_at
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 on conflict (id) do nothing
                 """,
                 (
@@ -614,13 +630,15 @@ def insert_task_record(record: AgentTaskMemoryRecord, config: MemoryStorageSetti
                     record.completed_at,
                 ),
             )
-        connection.commit()
 
 
-def row_to_memory_record(row: dict) -> AgentMemoryRecord:
+def row_to_memory_record(row) -> AgentMemoryRecord:
     data = dict(row)
-    data["created_at"] = data["created_at"].isoformat()
-    data["updated_at"] = data["updated_at"].isoformat()
+    data.pop("score", None)
+    if isinstance(data.get("tags"), str):
+        data["tags"] = json.loads(data["tags"] or "[]")
+    if isinstance(data.get("metadata"), str):
+        data["metadata"] = json.loads(data["metadata"] or "{}")
     return AgentMemoryRecord(**data)
 
 

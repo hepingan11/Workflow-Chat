@@ -40,14 +40,13 @@ class ModelTestResponse(BaseModel):
 
 
 class MemoryStorageSettings(BaseModel):
-    database_url: str = ""
+    sqlite_path: str = ".workflow-chat/memory.db"
     markdown_dir: str = ".workflow-chat/memories"
     updated_at: str | None = None
 
 
 class PublicMemoryStorageSettings(BaseModel):
-    database_url_preview: str = ""
-    has_database_url: bool = False
+    sqlite_path: str = ".workflow-chat/memory.db"
     markdown_dir: str = ".workflow-chat/memories"
     updated_at: str | None = None
 

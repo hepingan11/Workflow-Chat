@@ -63,6 +63,21 @@ chmod +x ./setup.sh
 
 脚本支持安装依赖，并可选配置 LLM 接口、消息推送、老板设定和长期记忆配置；所有配置都可以跳过，之后在 `/settings/services` 页面继续配置。详细说明见 [一条命令安装与基础配置](docs/setup-installer.md)。
 
+一键启动前后端：
+
+```powershell
+.\start.ps1
+```
+
+macOS / Linux:
+
+```bash
+chmod +x ./start.sh
+./start.sh
+```
+
+启动脚本会自动补齐本地依赖，前端后台运行并写入 `.workflow-chat/logs/web-dev.log`，当前终端直接输出后端日志。按 `Ctrl+C` 会停止前后端服务。
+
 重复执行远程 bootstrap 脚本时会自动检测当前安装目录和远端最新版：如果本地落后会提示是否更新，并只使用 `git pull --ff-only` 做安全更新；如果存在本地修改或分支分叉，不会强制覆盖文件。本地 setup 重复执行时会提示已有配置，并默认保留记忆库、skills、playbook、运行日志等数据。
 
 API:
@@ -106,7 +121,7 @@ npm run repl
 
 ## MVP后要解决什么？
 
-- 我想通过不断任务节点投递，能让对应角色自己总结经验，即训练一个长期记忆，打算使用PostgreSQL+MD 来训练长期记忆
+- 我想通过不断任务节点投递，能让对应角色自己总结经验，即训练一个长期记忆，当前使用 SQLite+Markdown 训练长期记忆（后续可平滑升级到向量检索）
 - 优化页面动画
 
 ## 当前角色
@@ -205,11 +220,11 @@ copy + materials -> prompt-controlled normalization -> workflow API payload -> D
 
 ### 角色长期记忆
 
-每个数字员工拥有独立长期记忆。当前采用 `PostgreSQL + Markdown` 双层设计：
+每个数字员工拥有独立长期记忆。当前采用 `SQLite + Markdown` 双层设计，无需任何外部数据库服务：
 
-- PostgreSQL 保存结构化索引、任务记录、记忆类型、来源、标签和重要度
-- Markdown 保存可读、可人工编辑的长期经验文档
-- 工具节点执行前会把该角色的长期记忆注入到 `long_term_memory`
+- Markdown 是可读、可人工编辑的长期经验主存（记忆的事实来源）
+- SQLite 是本地单文件结构化索引，保存任务记录、记忆类型、来源、标签和重要度，提供按相关度排序的 top-N 检索
+- 工具节点执行前会把该角色检索到的相关记忆注入到 `long_term_memory`
 - 任务完成、取消或失败后会自动复盘，并提炼为事件经验和避坑点
 
 记忆类型：
@@ -222,7 +237,7 @@ copy + materials -> prompt-controlled normalization -> workflow API payload -> D
 
 相关 API：
 
-- `POST /agents/memory-store/init`：初始化 PostgreSQL 记忆表
+- `POST /agents/memory-store/init`：初始化 SQLite 记忆表
 - `GET /agents/{agent_key}/memories?q=关键词`：检索角色记忆
 - `POST /agents/{agent_key}/memories`：手动写入角色记忆
 
@@ -245,11 +260,11 @@ copy + materials -> prompt-controlled normalization -> workflow API payload -> D
 
 该目录会被 `.gitignore` 忽略，适合保存本地模型配置、工具配置、Playbook、运行记录和审批记录。
 
-长期记忆配置：
+长期记忆配置（均为可选，留空使用默认值）：
 
 ```powershell
-$env:DATABASE_URL="postgresql://postgres:your-password@host:port/postgres"
+$env:MEMORY_DB_PATH=".workflow-chat/memory.db"
 $env:MEMORY_MARKDOWN_DIR=".workflow-chat/memories"
 ```
 
-如果暂时不配置 `DATABASE_URL`，系统仍会写入 Markdown 记忆；配置 PostgreSQL 后会同时写入结构化表。
+长期记忆默认使用本地 SQLite + Markdown，无需任何外部数据库服务：Markdown 是可读、可人工编辑的记忆主存，SQLite 提供结构化索引与按相关度排序的检索。也可以在 `/settings/services` 页面直接配置 SQLite 路径和 Markdown 目录。

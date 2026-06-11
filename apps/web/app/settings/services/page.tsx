@@ -88,9 +88,7 @@ type BossSettingsForm = {
 };
 
 type MemoryStorageForm = {
-  database_url: string;
-  database_url_preview: string;
-  has_database_url: boolean;
+  sqlite_path: string;
   markdown_dir: string;
 };
 
@@ -158,9 +156,7 @@ export default function ServicesSettingsPage() {
   const [bossForm, setBossForm] = useState<BossSettingsForm>({ preferred_name: "", role_profile: "" });
   const [notificationForm, setNotificationForm] = useState<NotificationSettingsForm>(createEmptyNotificationForm);
   const [memoryForm, setMemoryForm] = useState<MemoryStorageForm>({
-    database_url: "",
-    database_url_preview: "",
-    has_database_url: false,
+    sqlite_path: ".workflow-chat/memory.db",
     markdown_dir: ".workflow-chat/memories",
   });
   const [status, setStatus] = useState("等待配置");
@@ -306,9 +302,7 @@ export default function ServicesSettingsPage() {
       .then((response) => response.json())
       .then((data) => {
         setMemoryForm({
-          database_url: "",
-          database_url_preview: data.database_url_preview ?? "",
-          has_database_url: data.has_database_url ?? false,
+          sqlite_path: data.sqlite_path ?? ".workflow-chat/memory.db",
           markdown_dir: data.markdown_dir ?? ".workflow-chat/memories",
         });
       })
@@ -675,7 +669,7 @@ export default function ServicesSettingsPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          database_url: memoryForm.database_url,
+          sqlite_path: memoryForm.sqlite_path,
           markdown_dir: memoryForm.markdown_dir,
         }),
       });
@@ -684,9 +678,7 @@ export default function ServicesSettingsPage() {
         throw new Error(data.detail ?? "save failed");
       }
       setMemoryForm({
-        database_url: "",
-        database_url_preview: data.database_url_preview ?? "",
-        has_database_url: data.has_database_url ?? false,
+        sqlite_path: data.sqlite_path ?? ".workflow-chat/memory.db",
         markdown_dir: data.markdown_dir ?? ".workflow-chat/memories",
       });
       setStatus("长期记忆配置已保存");
@@ -701,23 +693,23 @@ export default function ServicesSettingsPage() {
 
   async function testMemoryStorageConnection() {
     setIsBusy(true);
-    notify("正在测试 PostgreSQL 记忆库...", "info");
+    notify("正在测试 SQLite 记忆库...", "info");
     try {
       const response = await fetch("/api/settings/memory-storage-config/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          database_url: memoryForm.database_url,
+          sqlite_path: memoryForm.sqlite_path,
           markdown_dir: memoryForm.markdown_dir,
         }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
-        throw new Error(data.message ?? "PostgreSQL 测试失败");
+        throw new Error(data.message ?? "SQLite 测试失败");
       }
-      notify(data.message ?? "PostgreSQL 记忆库连接成功", "success");
+      notify(data.message ?? "SQLite 记忆库连接成功", "success");
     } catch (error) {
-      notify(error instanceof Error ? error.message : "PostgreSQL 测试失败", "error");
+      notify(error instanceof Error ? error.message : "SQLite 测试失败", "error");
     } finally {
       setIsBusy(false);
     }
@@ -925,29 +917,24 @@ export default function ServicesSettingsPage() {
             <Save aria-hidden="true" />
             保存记忆配置
           </button>
-          <button type="button" onClick={testMemoryStorageConnection} disabled={isBusy} title="测试 PostgreSQL 记忆库">
+          <button type="button" onClick={testMemoryStorageConnection} disabled={isBusy} title="测试 SQLite 记忆库">
             <Send aria-hidden="true" />
             测试连接
           </button>
         </div>
         <p className="settingsIntro">
-          每个数字员工的长期记忆会写入 PostgreSQL 结构化索引，同时归档为 Markdown，方便人工查看和编辑。
+          每个数字员工的长期记忆会写入本地 SQLite 结构化索引，同时归档为 Markdown，方便人工查看和编辑。无需任何外部数据库服务。
         </p>
         <div className="settingsGrid bossSettingsGrid">
           <label className="wideField">
-            PostgreSQL Database URL
+            SQLite 数据库路径
             <input
-              value={memoryForm.database_url}
-              onChange={(event) => updateMemory("database_url", event.target.value)}
-              placeholder={
-                memoryForm.has_database_url
-                  ? `留空表示保留已保存连接：${memoryForm.database_url_preview}`
-                  : "postgresql://postgres:password@host:port/postgres"
-              }
-              type="password"
+              value={memoryForm.sqlite_path}
+              onChange={(event) => updateMemory("sqlite_path", event.target.value)}
+              placeholder=".workflow-chat/memory.db"
             />
             <small>
-              推荐使用 `postgresql://user:password@host:port/database`。保存后页面只显示脱敏预览。
+              本地单文件数据库，提供按相关度排序的 top-N 检索。相对路径以项目根目录为基准，留空使用默认 `.workflow-chat/memory.db`。
             </small>
           </label>
           <label>
@@ -957,7 +944,7 @@ export default function ServicesSettingsPage() {
               onChange={(event) => updateMemory("markdown_dir", event.target.value)}
               placeholder=".workflow-chat/memories"
             />
-            <small>不配置 PostgreSQL 时，也会继续写入 Markdown 记忆。</small>
+            <small>Markdown 是可读、可人工编辑的记忆主存；SQLite 仅作为检索索引。</small>
           </label>
           <div className="settingsHintCard">
             保存后任务完成会自动复盘：
